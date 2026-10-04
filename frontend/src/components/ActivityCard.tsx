@@ -15,6 +15,10 @@ interface ActivityCardProps {
   activity: Activity;
   going: number;
   host?: User;
+  // People going, shown as faces: who is there matters more than the listing.
+  attendees?: User[];
+  // The viewer's friends who are going or hosting.
+  friends?: User[];
   compact?: boolean;
   // The viewer may not see this activity: details are hidden behind a lock.
   locked?: boolean;
@@ -28,6 +32,8 @@ interface ActivityCardProps {
   className?: string;
 }
 
+const MAX_FACES = 4;
+
 function formatDistance(km: number): string {
   return km < 10 ? `${km.toFixed(1)} km away` : `${Math.round(km)} km away`;
 }
@@ -36,6 +42,8 @@ export function ActivityCard({
   activity,
   going,
   host,
+  attendees = [],
+  friends = [],
   compact = false,
   locked = false,
   distanceKm,
@@ -50,6 +58,21 @@ export function ActivityCard({
   const cancelled = activity.status === "cancelled";
   const place = `${activity.venueName} · ${activity.city}`;
   const status = cancelled ? "Cancelled" : (note ?? `${going}/${activity.capacity} going`);
+  const spotsLeft = Math.max(activity.capacity - going, 0);
+
+  let people: string;
+  if (cancelled) people = "Cancelled";
+  else if (note) people = note;
+  else if (friends.length > 0) {
+    const others = friends.length - 1;
+    people = `${friends[0].name.split(" ")[0]}${
+      others > 0 ? ` +${others}` : ""
+    } going`;
+  } else if (going === 0) people = "Be the first to join";
+  else people = `${going} ${going === 1 ? "person is" : "people are"} going`;
+
+  const room =
+    spotsLeft === 0 ? "Full" : spotsLeft <= 3 ? `Needs ${spotsLeft} more` : `${spotsLeft} spots left`;
 
   const frame = (classes: string, children: ReactNode) =>
     preview ? (
@@ -152,19 +175,35 @@ export function ActivityCard({
             <span className="font-medium text-location"> · {formatDistance(distanceKm)}</span>
           )}
         </p>
-        <div className="flex items-center justify-between gap-2 pt-2">
-          <span
-            className={`text-sm font-medium ${cancelled ? "text-red-400" : "text-soft"}`}
-          >
-            {status}
-          </span>
-          {host && (
-            <span className="flex min-w-0 items-center gap-1.5 text-sm text-muted">
-              <Avatar user={host} size="sm" />
-              <span className="truncate">{host.name}</span>
+        <div className="flex items-center gap-2 pt-2">
+          {attendees.length > 0 && (
+            <span className="flex shrink-0 -space-x-1.5">
+              {attendees.slice(0, MAX_FACES).map((person) => (
+                <Avatar key={person.id} user={person} size="sm" />
+              ))}
             </span>
           )}
+          <span
+            className={`min-w-0 truncate text-sm font-semibold ${
+              cancelled ? "text-red-400" : friends.length > 0 ? "text-brand-700" : "text-ink"
+            }`}
+          >
+            {people}
+          </span>
         </div>
+        {/* Second line, so the people line above never has to be cut short. */}
+        <p className="flex items-center justify-between gap-2 text-xs text-muted">
+          {host && <span className="min-w-0 truncate">Hosted by {host.name}</span>}
+          {!cancelled && (
+            <span
+              className={`ml-auto shrink-0 font-medium ${
+                spotsLeft > 0 && spotsLeft <= 3 ? "text-warning" : ""
+              }`}
+            >
+              {room}
+            </span>
+          )}
+        </p>
       </div>
     </>,
   );

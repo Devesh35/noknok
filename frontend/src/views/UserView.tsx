@@ -7,6 +7,7 @@ import {
   acceptFriendRequest,
   activeJoin,
   activityById,
+  attendanceOf,
   blockedIds,
   canView,
   earningsOf,
@@ -35,6 +36,7 @@ import { Avatar } from "@/components/Avatar";
 import { Button, buttonClass } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
+import { ReportSheet } from "@/components/ReportSheet";
 import { Segmented } from "@/components/Segmented";
 import { Skeleton } from "@/components/Skeleton";
 import { TicketCard } from "@/components/Ticket";
@@ -295,7 +297,8 @@ export function UserView({ handle }: { handle: string }) {
   const router = useRouter();
   const db = useDb();
   const [tab, setTab] = useState<Tab>("hosting");
-  const [showTickets, setShowTickets] = useState(false);
+  const [joinedView, setJoinedView] = useState<"plans" | "interested" | "tickets">("plans");
+  const [reporting, setReporting] = useState(false);
   // The tab control moves instantly; the list crossfades as a transition.
   const shownTab = useDeferredValue(tab);
 
@@ -360,6 +363,15 @@ export function UserView({ handle }: { handle: string }) {
     past: [...hosted, ...joined].filter(isPast).sort(byStart).reverse(),
   };
   const tickets = isOwn ? ticketsOf(db, profile.id) : [];
+  // Plans the user marked "interested" but hasn't joined.
+  const interested = isOwn
+    ? db.interested
+        .filter((i) => i.userId === profile.id)
+        .map((i) => activityById(db, i.activityId))
+        .filter((a): a is Activity => a !== undefined && a.status === "active" && !isPast(a))
+        .sort(byStart)
+    : [];
+  const attendance = attendanceOf(db, profile.id);
 
   const who = isOwn ? "You haven't" : `${firstName} hasn't`;
   const empty: Record<Exclude<Tab, "friends">, { emoji: string; title: string }> = {
@@ -374,6 +386,7 @@ export function UserView({ handle }: { handle: string }) {
     { label: "Hosted", value: String(hostedCount(db, profile.id)) },
     { label: "Friends", value: String(friends.length) },
     { label: "Rating", value: rating > 0 ? `★ ${rating.toFixed(1)}` : "New" },
+    { label: "Shows up", value: attendance === null ? "New" : `${attendance}%` },
   ];
   const tabs: { value: Tab; label: string }[] = [
     { value: "hosting", label: `Hosting (${lists.hosting.length})` },
@@ -397,7 +410,27 @@ export function UserView({ handle }: { handle: string }) {
   let panel;
   if (shownTab === "friends") {
     panel = <FriendsPanel db={db} profile={profile} viewer={viewer} isOwn={isOwn} />;
-  } else if (shownTab === "joined" && showTickets && isOwn) {
+  } else if (shownTab === "joined" && joinedView === "interested" && isOwn) {
+    panel =
+      interested.length === 0 ? (
+        <EmptyState
+          emoji="♡"
+          title="Nothing saved yet"
+          body="Tap the heart on a plan you might go to. It waits here until you decide."
+        />
+      ) : (
+        <div className={LIST_GRID}>
+          {interested.map((activity) => (
+            <ActivityCard
+              key={activity.id}
+              activity={activity}
+              going={goingJoins(db, activity.id).length}
+              compact
+            />
+          ))}
+        </div>
+      );
+  } else if (shownTab === "joined" && joinedView === "tickets" && isOwn) {
     panel =
       tickets.length === 0 ? (
         <EmptyState emoji="🎟️" title="No tickets yet" />
@@ -483,7 +516,7 @@ export function UserView({ handle }: { handle: string }) {
               )}
             </div>
             <p className="text-body">{profile.bio}</p>
-            <dl className="grid grid-cols-3 rounded-3xl border border-line bg-surface/50 py-3 text-center">
+            <dl className="grid grid-cols-4 rounded-3xl border border-line bg-surface/50 py-3 text-center">
               {stats.map((stat) => (
                 <div key={stat.label}>
                   <dd className="text-lg font-bold text-ink">{stat.value}</dd>
@@ -515,6 +548,11 @@ export function UserView({ handle }: { handle: string }) {
                       {isBlocked ? "Unblock" : "Block"}
                     </Button>
                   )}
+                  {viewer && (
+                    <Button variant="ghost" onClick={() => setReporting(true)}>
+                      Report
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -532,11 +570,17 @@ export function UserView({ handle }: { handle: string }) {
         />
 
         {isOwn && shownTab === "joined" && (
-          <div className="flex gap-2 pt-4">
-            <Chip selected={!showTickets} onClick={() => setShowTickets(false)}>
-              Plans
+          <div className="flex flex-wrap gap-2 pt-4">
+            <Chip selected={joinedView === "plans"} onClick={() => setJoinedView("plans")}>
+              Going
             </Chip>
-            <Chip selected={showTickets} onClick={() => setShowTickets(true)}>
+            <Chip
+              selected={joinedView === "interested"}
+              onClick={() => setJoinedView("interested")}
+            >
+              Interested ({interested.length})
+            </Chip>
+            <Chip selected={joinedView === "tickets"} onClick={() => setJoinedView("tickets")}>
               My tickets ({tickets.length})
             </Chip>
           </div>
@@ -547,6 +591,16 @@ export function UserView({ handle }: { handle: string }) {
             {panel}
           </div>
         </ViewTransition>
+
+        {!isOwn && (
+          <ReportSheet
+            open={reporting}
+            onClose={() => setReporting(false)}
+            targetType="user"
+            targetId={profile.id}
+            name={profile.name}
+          />
+        )}
       </div>
     </ViewTransition>
   );

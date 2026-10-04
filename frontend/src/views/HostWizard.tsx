@@ -17,7 +17,7 @@ import { ActivityCard } from "@/components/ActivityCard";
 import { Button, buttonClass } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
-import { Input, Textarea } from "@/components/Field";
+import { Input, Textarea, Toggle } from "@/components/Field";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 import { Skeleton } from "@/components/Skeleton";
 import {
@@ -36,13 +36,15 @@ import {
   type Category,
   type City,
   type Db,
+  type Setting,
   type User,
   type Visibility,
   type WaitlistMode,
 } from "@/lib/types";
 
-const DRAFT_KEY = "noknok.draft.activity";
-const STEPS = ["Basics", "When & where", "Price & spots", "Who can see it", "Preview"];
+// Versioned: drafts saved before the category change would not load.
+const DRAFT_KEY = "noknok.draft.activity.v3";
+const STEPS = ["Basics", "When & where", "Price & spots", "Who can join", "Preview"];
 const LAST_STEP = STEPS.length - 1;
 
 const CITY_OPTIONS: SelectOption<City>[] = CITIES.map((city) => ({ value: city, label: city }));
@@ -56,11 +58,10 @@ const CUTOFF_OPTIONS: SelectOption<string>[] = [
   { value: "24", label: "Up to 24 hours before" },
   { value: "48", label: "Up to 48 hours before" },
 ];
-const VISIBILITY_HELP: Record<Visibility, string> = {
-  open: "Anyone on NokNok can find and join it.",
-  friends: "Only your friends see the details. Others see a locked card.",
-  friends_of_friends: "Your friends, and anyone who shares a friend with you.",
-};
+const SETTING_OPTIONS: SelectOption<Setting>[] = [
+  { value: "indoor", label: "Indoors" },
+  { value: "outdoor", label: "Outdoors" },
+];
 
 // Everything is kept as strings while editing; converted on publish.
 interface Form {
@@ -78,6 +79,8 @@ interface Form {
   refundCutoffHours: string;
   waitlistMode: WaitlistMode;
   visibility: Visibility;
+  setting: Setting;
+  beginnerFriendly: boolean;
   rules: string; // one per line
 }
 
@@ -110,6 +113,8 @@ function blankForm(city: City): Form {
     refundCutoffHours: "24",
     waitlistMode: "auto",
     visibility: "open",
+    setting: "indoor",
+    beginnerFriendly: true,
     rules: "",
   };
 }
@@ -130,6 +135,8 @@ function formFrom(activity: Activity): Form {
     refundCutoffHours: String(activity.refundCutoffHours),
     waitlistMode: activity.waitlistMode,
     visibility: activity.visibility,
+    setting: activity.setting,
+    beginnerFriendly: activity.beginnerFriendly,
     rules: activity.tags.join("\n"),
   };
 }
@@ -188,6 +195,8 @@ function toInput(form: Form): ActivityInput {
     priceInr: Number(form.price),
     capacity: Number(form.capacity),
     visibility: form.visibility,
+    setting: form.setting,
+    beginnerFriendly: form.beginnerFriendly,
     tags: form.rules
       .split("\n")
       .map((rule) => rule.trim())
@@ -399,6 +408,19 @@ function WizardForm({
               options={CITY_OPTIONS}
               error={errors.city}
             />
+            <SelectMenu
+              variant="field"
+              label="Indoors or outdoors"
+              value={form.setting}
+              onChange={(setting) => patch({ setting })}
+              options={SETTING_OPTIONS}
+            />
+            <Toggle
+              label="Beginner friendly"
+              hint="First-timers are welcome and won't hold anyone back."
+              checked={form.beginnerFriendly}
+              onChange={(beginnerFriendly) => patch({ beginnerFriendly })}
+            />
           </>
         )}
 
@@ -444,7 +466,7 @@ function WizardForm({
 
         {step === 3 && (
           <>
-            <div role="radiogroup" aria-label="Who can see it" className="space-y-2">
+            <div role="radiogroup" aria-label="Who can join" className="space-y-2">
               {VISIBILITIES.map((visibility) => (
                 <button
                   key={visibility}
@@ -465,7 +487,7 @@ function WizardForm({
                     <span className="block font-semibold text-ink">
                       {VISIBILITY_META[visibility].label}
                     </span>
-                    <span className="block text-sm text-soft">{VISIBILITY_HELP[visibility]}</span>
+                    <span className="block text-sm text-soft">{VISIBILITY_META[visibility].help}</span>
                   </span>
                 </button>
               ))}
@@ -498,7 +520,7 @@ function WizardForm({
                 </div>
               )}
               <div className="flex justify-between gap-4">
-                <dt>Visible to</dt>
+                <dt>Who can join</dt>
                 <dd className="font-semibold">{VISIBILITY_META[preview.visibility].label}</dd>
               </div>
             </dl>

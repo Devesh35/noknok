@@ -7,7 +7,7 @@ import {
 } from "@/mock/users";
 import type { Activity, Db, FriendRequest, Join, UserSettings } from "@/lib/types";
 
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   push: false,
@@ -42,6 +42,10 @@ export function createSeedDb(): Db {
         hostShare: activity.priceInr,
         feePaid: 0,
         refunded: 0,
+        seeded: true,
+        // Past seeded activities count as attended, so attendance scores start sensible.
+        checkedInAt:
+          Date.parse(activity.endsAt) < Date.parse(createdAt) ? activity.startsAt : undefined,
       });
     });
     return {
@@ -102,6 +106,8 @@ export function createSeedDb(): Db {
     ],
     reviews: [],
     invites: [],
+    interested: [],
+    reports: [],
     userSettings: {},
     dev: {
       autoAcceptFriends: false,

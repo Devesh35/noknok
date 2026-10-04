@@ -26,6 +26,8 @@ const ICONS: Record<NotificationType, string> = {
   waitlist_request: "⏳",
   reminder: "⏰",
   review: "⭐",
+  friend_joined: "🧑‍🤝‍🧑",
+  needs_people: "📣",
 };
 
 // /notifications: the in-app inbox.

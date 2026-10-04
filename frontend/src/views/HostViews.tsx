@@ -69,9 +69,14 @@ export function HostHub() {
     <div className={PAGE}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-extrabold tracking-tight text-ink">Hosting</h1>
-        <Link href="/host/new" className={buttonClass("primary")}>
-          + New activity
-        </Link>
+        <span className="flex flex-wrap gap-2">
+          <Link href="/host/quick" className={buttonClass("primary")}>
+            ⚡ Quick plan
+          </Link>
+          <Link href="/host/new" className={buttonClass("secondary")}>
+            + Full activity
+          </Link>
+        </span>
       </div>
       {upcoming.length === 0 ? (
         <EmptyState

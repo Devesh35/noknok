@@ -206,6 +206,33 @@ export function DevView() {
       </section>
 
       <section className={CARD}>
+        <h2 className={HEADING}>Reports ({db.reports.length})</h2>
+        {db.reports.length === 0 ? (
+          <p className="text-sm text-soft">
+            Nothing reported. Reports made from a plan or profile land here; a real backend would
+            send them to a moderation queue.
+          </p>
+        ) : (
+          <ul className="space-y-2 text-sm text-body">
+            {db.reports.map((item) => {
+              const reporter = db.users.find((u) => u.id === item.reporterId)?.name ?? "Someone";
+              const target =
+                item.targetType === "user"
+                  ? db.users.find((u) => u.id === item.targetId)?.name
+                  : db.activities.find((a) => a.id === item.targetId)?.title;
+              return (
+                <li key={item.id}>
+                  {reporter} reported {item.targetType === "user" ? "user" : "plan"}{" "}
+                  <span className="font-semibold text-ink">{target ?? item.targetId}</span>:{" "}
+                  {item.reason}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className={CARD}>
         <h2 className={HEADING}>Reset</h2>
         <p className="text-sm text-soft">
           Restores the seeded users, activities and friendships, with dates relative to today, and

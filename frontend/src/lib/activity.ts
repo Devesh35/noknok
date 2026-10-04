@@ -1,21 +1,32 @@
 import type { Activity, Category, City, Visibility } from "@/lib/types";
 
 export const CATEGORY_META: Record<Category, { label: string; emoji: string; gradient: string }> = {
-  party: { label: "Party", emoji: "🎉", gradient: "from-fuchsia-500 to-violet-600" },
   sports: { label: "Sports", emoji: "⚽", gradient: "from-emerald-500 to-teal-600" },
-  gym: { label: "Gym", emoji: "🏋️", gradient: "from-orange-500 to-red-500" },
-  outdoor: { label: "Outdoor", emoji: "⛰️", gradient: "from-sky-500 to-blue-600" },
-  indoor: { label: "Indoor", emoji: "🎲", gradient: "from-amber-400 to-orange-500" },
-  celebration: { label: "Celebration", emoji: "🎂", gradient: "from-pink-500 to-rose-500" },
-  event: { label: "Event", emoji: "🎤", gradient: "from-indigo-500 to-purple-600" },
+  social: { label: "Social", emoji: "🎉", gradient: "from-fuchsia-500 to-violet-600" },
+  outdoors: { label: "Outdoors", emoji: "🌲", gradient: "from-sky-500 to-blue-600" },
+  games: { label: "Games", emoji: "🎲", gradient: "from-amber-400 to-orange-500" },
+  food: { label: "Food", emoji: "🍽️", gradient: "from-pink-500 to-rose-500" },
+  creative: { label: "Creative", emoji: "🎨", gradient: "from-rose-400 to-orange-400" },
+  fitness: { label: "Fitness", emoji: "💪", gradient: "from-orange-500 to-red-500" },
+  music: { label: "Music", emoji: "🎵", gradient: "from-violet-500 to-indigo-600" },
+  entertainment: { label: "Entertainment", emoji: "🎬", gradient: "from-indigo-500 to-purple-600" },
 };
 
 export const CATEGORIES = Object.keys(CATEGORY_META) as Category[];
 
-export const VISIBILITY_META: Record<Visibility, { label: string; emoji: string }> = {
-  open: { label: "Open", emoji: "🌍" },
-  friends: { label: "Friends", emoji: "🔒" },
-  friends_of_friends: { label: "Friends of friends", emoji: "👥" },
+// "Who can join?", from most to least open.
+export const VISIBILITY_META: Record<Visibility, { label: string; emoji: string; help: string }> = {
+  open: { label: "Anyone", emoji: "🌍", help: "Anyone on NokNok can see and join." },
+  friends_of_friends: {
+    label: "Friends of friends",
+    emoji: "👥",
+    help: "Your friends, and people who share a friend with you.",
+  },
+  friends: {
+    label: "Friends only",
+    emoji: "🔒",
+    help: "Only your friends, plus anyone you send your invite link.",
+  },
 };
 
 export const VISIBILITIES = Object.keys(VISIBILITY_META) as Visibility[];

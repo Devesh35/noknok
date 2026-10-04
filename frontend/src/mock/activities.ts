@@ -13,14 +13,16 @@ function slot(dayOffset: number, hour: number, minute: number, hours: number) {
 export type SeedActivity = Pick<
   Activity,
   | "id" | "title" | "category" | "description" | "hostId" | "venueName" | "address" | "city"
-  | "lat" | "lng" | "startsAt" | "endsAt" | "priceInr" | "capacity" | "visibility" | "tags"
+  | "setting" | "beginnerFriendly" | "lat" | "lng" | "startsAt" | "endsAt" | "priceInr" | "capacity" | "visibility" | "tags"
 > & { joinedIds: string[]; coverUrl: string };
 
 const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a1",
     title: "Rooftop Bollywood Night",
-    category: "party",
+    category: "music",
+    setting: "outdoor",
+    beginnerFriendly: false,
     description:
       "DJ set of 2000s Bollywood bangers on a Bandra rooftop with a sea breeze. Cover includes one welcome drink and snacks. Dance floor opens at 9, the terrace is open all night for those who would rather talk than dance. Come solo or bring your gang.",
     hostId: "u1",
@@ -40,6 +42,8 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
     id: "a2",
     title: "Sunday 5-a-side Football",
     category: "sports",
+    setting: "outdoor",
+    beginnerFriendly: true,
     description:
       "Friendly 5-a-side on an artificial turf. Mixed skill levels, teams get shuffled every 20 minutes so everyone plays with everyone. Price covers the turf booking split evenly.",
     hostId: "u0",
@@ -58,7 +62,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a3",
     title: "Sunrise Trek to Kalsubai",
-    category: "outdoor",
+    category: "outdoors",
+    setting: "outdoor",
+    beginnerFriendly: false,
     description:
       "Night climb to Maharashtra's highest peak to catch the sunrise from the top. We leave Pune by private bus at 10 PM the night before, start climbing at 2 AM and are back by late afternoon. Moderate difficulty with a few iron ladders. Price includes transport, breakfast and a trek lead.",
     hostId: "u2",
@@ -82,7 +88,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a4",
     title: "Board Games & Chai",
-    category: "indoor",
+    category: "games",
+    setting: "indoor",
+    beginnerFriendly: true,
     description:
       "A relaxed evening of Catan, Codenames and Azul at my place. Chai and biscuits are on me. Beginners welcome, we explain every game.",
     hostId: "u3",
@@ -99,7 +107,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a5",
     title: "Morning Gym Buddy Session",
-    category: "gym",
+    category: "fitness",
+    setting: "indoor",
+    beginnerFriendly: false,
     description:
       "Push day with a spotter. Looking for 2-3 people who train regularly to share a session and keep each other honest.",
     hostId: "u4",
@@ -118,7 +128,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a6",
     title: "Priya's Birthday Brunch",
-    category: "celebration",
+    category: "food",
+    setting: "indoor",
+    beginnerFriendly: false,
     description:
       "Turning 28 and doing it over bottomless brunch. Price is the per-head set menu. Gifts are not needed, just show up hungry.",
     hostId: "u1",
@@ -136,6 +148,8 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
     id: "a7",
     title: "Box Cricket Night",
     category: "sports",
+    setting: "indoor",
+    beginnerFriendly: false,
     description:
       "6-over matches under lights. Two teams of six, losers buy the cutting chai. Tennis ball, no pads needed.",
     hostId: "u6",
@@ -154,7 +168,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a8",
     title: "Stand-up Comedy Open Mic",
-    category: "event",
+    category: "entertainment",
+    setting: "indoor",
+    beginnerFriendly: false,
     description:
       "Twelve comics, five minutes each, one surprise headliner. Watch from the audience or sign up for a spot when you arrive.",
     hostId: "u7",
@@ -172,6 +188,8 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
     id: "a9",
     title: "Badminton Doubles",
     category: "sports",
+    setting: "indoor",
+    beginnerFriendly: false,
     description:
       "One court, two hours, rotating doubles. Intermediate level. Price is the court fee split four ways.",
     hostId: "u4",
@@ -188,7 +206,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a10",
     title: "Beach Cleanup & Breakfast",
-    category: "outdoor",
+    category: "outdoors",
+    setting: "outdoor",
+    beginnerFriendly: true,
     description:
       "Two hours of cleaning up Versova beach followed by misal pav nearby. Gloves and bags are provided.",
     hostId: "u0",
@@ -207,7 +227,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a11",
     title: "House Party: Retro Vinyl Night",
-    category: "party",
+    category: "social",
+    setting: "indoor",
+    beginnerFriendly: false,
     description:
       "Spinning my dad's record collection: R.D. Burman, Kishore, a bit of disco. Small crowd, good speakers. Price covers food and mixers.",
     hostId: "u0",
@@ -224,7 +246,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a12",
     title: "Yoga in the Park",
-    category: "gym",
+    category: "fitness",
+    setting: "outdoor",
+    beginnerFriendly: true,
     description:
       "A 75-minute vinyasa flow on the lawn, suitable for all levels. We finish with ten minutes of guided breathing.",
     hostId: "u5",
@@ -243,7 +267,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a13",
     title: "Karaoke Night",
-    category: "party",
+    category: "music",
+    setting: "indoor",
+    beginnerFriendly: true,
     description:
       "Private karaoke room booked for the evening. Song list covers Hindi, Marathi and English. Enthusiasm matters more than pitch.",
     hostId: "u2",
@@ -260,7 +286,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a14",
     title: "Monsoon Trek to Rajmachi",
-    category: "outdoor",
+    category: "outdoors",
+    setting: "outdoor",
+    beginnerFriendly: true,
     description:
       "Easy 14 km trail from Lonavala through waterfalls and fog to the twin forts of Rajmachi. Lunch at a village home included.",
     hostId: "u2",
@@ -278,6 +306,8 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
     id: "a15",
     title: "Saturday Football Scrimmage",
     category: "sports",
+    setting: "outdoor",
+    beginnerFriendly: true,
     description:
       "Casual 5-a-side scrimmage. Same turf, same crowd, new excuses for missing sitters.",
     hostId: "u0",
@@ -296,7 +326,9 @@ const SEED: Omit<SeedActivity, "coverUrl">[] = [
   {
     id: "a16",
     title: "Startup Founders Mixer",
-    category: "event",
+    category: "social",
+    setting: "indoor",
+    beginnerFriendly: false,
     description:
       "An informal evening for early-stage founders and people who want to join startups. Three five-minute lightning talks, then open networking over coffee.",
     hostId: "u7",

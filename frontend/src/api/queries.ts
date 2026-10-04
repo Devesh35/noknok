@@ -144,6 +144,41 @@ export function hostedCount(db: Db, userId: string): number {
   return (user?.baseHostedCount ?? 0) + created;
 }
 
+// ---------- Interested ----------
+
+export function isInterested(db: Db, activityId: string, userId: string | null): boolean {
+  return db.interested.some((i) => i.userId === userId && i.activityId === activityId);
+}
+
+export function interestedCount(db: Db, activityId: string): number {
+  return db.interested.filter((i) => i.activityId === activityId).length;
+}
+
+// ---------- Reliability ----------
+
+// Share of joined plans the user actually turned up to (hosts check people
+// in). null until there is any history to judge by.
+export function attendanceOf(db: Db, userId: string): number | null {
+  const user = userById(db, userId);
+  const past = db.joins.filter((j) => {
+    if (j.userId !== userId || j.status !== "going" || j.seeded) return false;
+    const activity = activityById(db, j.activityId);
+    return activity !== undefined && activity.status === "active" && isPast(activity);
+  });
+  const joined = (user?.baseJoinedCount ?? 0) + past.length;
+  if (joined === 0) return null;
+  const attended = (user?.baseAttendedCount ?? 0) + past.filter((j) => j.checkedInAt).length;
+  return Math.round((attended / joined) * 100);
+}
+
+// Friends of the viewer who are going to, or hosting, an activity.
+export function friendsGoing(db: Db, activity: Activity, viewerId: string | null): User[] {
+  if (!viewerId) return [];
+  return friendsOf(db, viewerId).filter(
+    (friend) => friend.id === activity.hostId || isGoing(db, activity.id, friend.id),
+  );
+}
+
 // ---------- Visibility & invites ----------
 
 function viewerKey(db: Db): string {

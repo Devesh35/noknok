@@ -6,6 +6,11 @@ import { useEffect, useState, ViewTransition } from "react";
 import {
   acceptFriendRequest,
   activeJoin,
+  attendanceOf,
+  friendsGoing,
+  interestedCount,
+  isInterested,
+  toggleInterested,
   activityById,
   addReview,
   breakdownFor,
@@ -40,6 +45,7 @@ import { Cover } from "@/components/Cover";
 import { EmptyState } from "@/components/EmptyState";
 import { ArrowLeftIcon, CalendarIcon, LockIcon, MapPinIcon, ShareIcon } from "@/components/icons";
 import { NAV_BACK } from "@/components/PageTransition";
+import { ReportSheet } from "@/components/ReportSheet";
 import { ShareSheet } from "@/components/ShareSheet";
 import { Sheet } from "@/components/Sheet";
 import { Skeleton } from "@/components/Skeleton";
@@ -61,7 +67,7 @@ const REVIEW_TAGS = ["On time", "Well organised", "Friendly crowd", "Great venue
 const OVERLAY_BUTTON =
   "inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/40 bg-white/20 text-white shadow-lg backdrop-blur-md transition duration-200 hover:bg-white/35 active:scale-90";
 
-type SheetName = "login" | "checkout" | "success" | "ticket" | "leave" | "share";
+type SheetName = "login" | "checkout" | "success" | "ticket" | "leave" | "share" | "report";
 type CtaState =
   | "cancelled"
   | "ended"
@@ -109,6 +115,7 @@ function HostBlock({ db, host, viewer }: { db: Db; host: User; viewer: User | nu
   const { rating } = hostRating(db, host.id);
   const mutual = viewer && viewer.id !== host.id ? mutualFriends(db, viewer.id, host.id) : [];
   const friend = viewer ? isFriend(graphOf(db), viewer.id, host.id) : false;
+  const attendance = attendanceOf(db, host.id);
   return (
     <Link
       href={`/u/${host.handle}`}
@@ -137,6 +144,12 @@ function HostBlock({ db, host, viewer }: { db: Db; host: User; viewer: User | nu
         </span>
         <br />
         {hostedCount(db, host.id)} hosted
+        {attendance !== null && (
+          <>
+            <br />
+            {attendance}% show-up
+          </>
+        )}
       </p>
     </Link>
   );
@@ -357,6 +370,37 @@ export function PartyView({ id }: { id: string }) {
   const myCancelledJoin = db.joins.find(
     (j) => j.activityId === activity.id && j.userId === viewer?.id && j.status === "host_cancelled",
   );
+
+  const interested = isInterested(db, activity.id, viewer?.id ?? null);
+  const interestedTotal = interestedCount(db, activity.id);
+  const friends = friendsGoing(db, activity, viewer?.id ?? null);
+  const canBeInterested = !cancelled && !past && !isHost && myJoin?.status !== "going";
+
+  const toggleInterest = () => {
+    if (!viewer) {
+      setSheet("login");
+      return;
+    }
+    toast(toggleInterested(activity.id) ? "Saved. Find it under Profile › Joined." : "Removed");
+  };
+
+  // "Share my plan": lets someone know where the user will be.
+  const sharePlan = async () => {
+    const text = `${viewer?.name ?? "I"} is going to ${activity.title}
+${formatDateTime(
+      activity.startsAt,
+    )} · ${activity.venueName}, ${activity.address}
+${pageUrl}`;
+    try {
+      if (typeof navigator.share === "function") await navigator.share({ title: activity.title, text });
+      else {
+        await navigator.clipboard.writeText(text);
+        toast("Plan details copied. Paste them to a friend.");
+      }
+    } catch {
+      // Share sheet dismissed.
+    }
+  };
 
   let state: CtaState;
   if (cancelled) state = "cancelled";
@@ -635,8 +679,16 @@ export function PartyView({ id }: { id: string }) {
                   <span className="font-semibold text-ink">{going.length} going</span> ·{" "}
                   {spotsLeft === 0 ? "no spots left" : `${spotsLeft} spots left`}
                   {waitlist.length > 0 && ` · ${waitlist.length} on waitlist`}
+                  {interestedTotal > 0 && ` · ${interestedTotal} interested`}
                 </p>
               </div>
+              {friends.length > 0 && (
+                <p className="text-sm font-medium text-brand-700">
+                  {friends.map((f) => f.name.split(" ")[0]).join(", ")}{" "}
+                  {friends.length === 1 ? "is" : "are"} in. You know{" "}
+                  {friends.length === 1 ? "someone" : "people"} here.
+                </p>
+              )}
               <div
                 role="progressbar"
                 aria-label="Spots filled"
@@ -704,12 +756,35 @@ export function PartyView({ id }: { id: string }) {
                   : `Leave up to ${activity.refundCutoffHours} hours before the start for a full refund. After that there is no refund. If the host cancels, you are refunded in full.`}
               </p>
             </section>
+
+            {!isHost && (
+              <button
+                type="button"
+                onClick={() => setSheet(viewer ? "report" : "login")}
+                className="min-h-11 text-sm font-semibold text-muted hover:text-ink hover:underline"
+              >
+                Report this plan
+              </button>
+            )}
           </div>
 
           <aside className="hidden lg:block">
             <div className="glass sticky top-20 animate-rise space-y-4 rounded-[2rem] p-5">
               <PriceLabel activity={activity} />
-              <div className="flex gap-2">{cta}</div>
+              <div className="flex gap-2">
+                {canBeInterested && (
+                  <Button
+                    variant="secondary"
+                    aria-pressed={interested}
+                    aria-label={interested ? "Remove from interested" : "I'm interested"}
+                    onClick={toggleInterest}
+                    className={interested ? "text-location" : ""}
+                  >
+                    {interested ? "♥" : "♡"}
+                  </Button>
+                )}
+                {cta}
+              </div>
               <p className="text-xs text-muted">
                 {PAYMENT_MODE === "razorpay_test"
                   ? "Razorpay test mode: use a test card, no real money moves."
@@ -722,7 +797,20 @@ export function PartyView({ id }: { id: string }) {
         <div className="glass fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 rounded-[1.75rem] px-4 py-3 lg:hidden">
           <div className="flex items-center gap-3">
             <PriceLabel activity={activity} />
-            <div className="flex flex-1 gap-2">{cta}</div>
+            <div className="flex flex-1 gap-2">
+              {canBeInterested && (
+                <Button
+                  variant="secondary"
+                  aria-pressed={interested}
+                  aria-label={interested ? "Remove from interested" : "I'm interested"}
+                  onClick={toggleInterest}
+                  className={interested ? "text-location" : ""}
+                >
+                  {interested ? "♥" : "♡"}
+                </Button>
+              )}
+              {cta}
+            </div>
           </div>
         </div>
 
@@ -798,6 +886,12 @@ export function PartyView({ id }: { id: string }) {
           <p className="mt-3 text-center text-xs text-muted">
             Show this to the host at the door.
           </p>
+          <Button variant="secondary" className="mt-3 w-full" onClick={sharePlan}>
+            Share my plan with a friend
+          </Button>
+          <p className="mt-2 text-center text-xs text-muted">
+            Sends where you&apos;ll be and when, so someone knows.
+          </p>
         </Sheet>
 
         <Sheet open={sheet === "leave"} onClose={() => setSheet(null)} title="Leave this activity?">
@@ -819,6 +913,14 @@ export function PartyView({ id }: { id: string }) {
             </Button>
           </div>
         </Sheet>
+
+        <ReportSheet
+          open={sheet === "report"}
+          onClose={() => setSheet(null)}
+          targetType="activity"
+          targetId={activity.id}
+          name="this plan"
+        />
 
         <ShareSheet
           open={sheet === "share"}

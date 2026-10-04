@@ -8,6 +8,7 @@ import {
   activityById,
   breakdownFor,
   goingJoins,
+  graphOf,
   inviteFor,
   isHandleTaken,
   isPast,
@@ -24,6 +25,7 @@ import { DAY_MS, HOUR_MS, now } from "@/lib/time";
 import {
   ANON,
   type Activity,
+  type Category,
   type City,
   type Db,
   type DevSettings,
@@ -32,6 +34,7 @@ import {
   type User,
   type UserSettings,
 } from "@/lib/types";
+import { canSee, friendIds } from "@/lib/visibility";
 import { joinsToPromote } from "@/lib/waitlist";
 
 function nowIso(): string {
@@ -109,6 +112,8 @@ export function registerUser(input: RegisterInput): User {
     baseRating: 0,
     baseRatingCount: 0,
     baseHostedCount: 0,
+    baseJoinedCount: 0,
+    baseAttendedCount: 0,
   };
   mutate((draft) => {
     draft.users.push(user);
@@ -173,6 +178,8 @@ export type ActivityInput = Pick<
   | "priceInr"
   | "capacity"
   | "visibility"
+  | "setting"
+  | "beginnerFriendly"
   | "tags"
   | "waitlistMode"
   | "refundCutoffHours"
@@ -225,6 +232,77 @@ export function cancelActivity(id: string) {
         `/party/${id}`,
       );
     }
+  });
+}
+
+export interface QuickPlanInput {
+  title: string;
+  category: Category;
+  startsAt: string;
+  venueName: string;
+  city: City;
+  need: number; // how many more people the host is looking for
+}
+
+const QUICK_PLAN_HOURS = 2;
+
+// "Quick plan": a free, open activity made from four answers.
+export function createQuickPlan(input: QuickPlanInput): Activity {
+  const plural = input.need === 1 ? "person" : "people";
+  const activity = createActivity({
+    title: input.title.trim(),
+    category: input.category,
+    description: `Looking for ${input.need} more ${plural} to join. Message the host in person at the venue.`,
+    venueName: input.venueName.trim(),
+    address: `${input.venueName.trim()}, ${input.city}`,
+    city: input.city,
+    startsAt: input.startsAt,
+    endsAt: new Date(Date.parse(input.startsAt) + QUICK_PLAN_HOURS * HOUR_MS).toISOString(),
+    priceInr: 0,
+    capacity: input.need,
+    visibility: "open",
+    setting: "outdoor",
+    beginnerFriendly: true,
+    tags: [],
+    waitlistMode: "auto",
+    refundCutoffHours: 0,
+  });
+  mutate((draft) => {
+    activityById(draft, activity.id)!.quick = true;
+  });
+  return activity;
+}
+
+// ---------- Interested ("I might go") ----------
+
+// Returns whether the user is now interested.
+export function toggleInterested(activityId: string): boolean {
+  return mutate((draft) => {
+    const user = requireMe(draft);
+    const index = draft.interested.findIndex(
+      (i) => i.userId === user.id && i.activityId === activityId,
+    );
+    if (index >= 0) {
+      draft.interested.splice(index, 1);
+      return false;
+    }
+    draft.interested.push({ userId: user.id, activityId, createdAt: nowIso() });
+    return true;
+  });
+}
+
+// ---------- Reports ----------
+
+export function report(targetType: "activity" | "user", targetId: string, reason: string) {
+  mutate((draft) => {
+    draft.reports.push({
+      id: newId("rp"),
+      reporterId: requireMe(draft).id,
+      targetType,
+      targetId,
+      reason,
+      createdAt: nowIso(),
+    });
   });
 }
 
@@ -282,6 +360,9 @@ export function joinActivity(activityId: string): Join {
 
     const join = existing ?? newJoin(draft, activity, user.id);
     grantSpot(draft, join, activity);
+    draft.interested = draft.interested.filter(
+      (i) => !(i.userId === user.id && i.activityId === activityId),
+    );
     notify(
       draft,
       user.id,
@@ -298,6 +379,19 @@ export function joinActivity(activityId: string): Join {
       `${goingJoins(draft, activityId).length}/${activity.capacity} spots are taken.`,
       `/host/${activityId}`,
     );
+    // Friends who are allowed to see the plan hear that this user is going.
+    const graph = graphOf(draft);
+    for (const friendId of friendIds(graph, user.id)) {
+      if (friendId === activity.hostId || !canSee(friendId, activity, graph)) continue;
+      notify(
+        draft,
+        friendId,
+        "friend_joined",
+        `${user.name} is going to ${activity.title}`,
+        "Tap to see the plan and join them.",
+        `/party/${activityId}`,
+      );
+    }
     return join;
   });
 }
@@ -579,6 +673,23 @@ export function runClock() {
         reviewKey,
       ]);
     }
+  }
+
+  // Hosts hear when a plan starting within a day still has room.
+  for (const activity of db.activities) {
+    const startsIn = Date.parse(activity.startsAt) - now();
+    const left = spotsLeft(db, activity);
+    const key = `needs:${activity.id}`;
+    if (activity.status !== "active" || startsIn <= 0 || startsIn > REMINDER_WINDOW_MS) continue;
+    if (left === 0 || existing.has(key)) continue;
+    due.push([
+      activity.hostId,
+      "needs_people",
+      `${activity.title} needs ${left} more`,
+      "Share your invite link to fill the last spots.",
+      `/host/${activity.id}`,
+      key,
+    ]);
   }
 
   if (due.length === 0) return;

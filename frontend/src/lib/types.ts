@@ -1,13 +1,19 @@
 export type Visibility = "friends" | "friends_of_friends" | "open";
 
+// What the plan is about. Indoor/outdoor and similar are attributes of an
+// activity (see Activity.setting), not categories.
 export type Category =
-  | "party"
   | "sports"
-  | "gym"
-  | "outdoor"
-  | "indoor"
-  | "celebration"
-  | "event";
+  | "social"
+  | "outdoors"
+  | "games"
+  | "food"
+  | "creative"
+  | "fitness"
+  | "music"
+  | "entertainment";
+
+export type Setting = "indoor" | "outdoor";
 
 export const CITIES = ["Mumbai", "Navi Mumbai", "Thane", "Pune"] as const;
 export type City = (typeof CITIES)[number];
@@ -29,6 +35,9 @@ export interface User {
   baseRating: number;
   baseRatingCount: number;
   baseHostedCount: number;
+  // Plans joined / actually attended before the app's data begins.
+  baseJoinedCount: number;
+  baseAttendedCount: number;
 }
 
 export type WaitlistMode = "auto" | "approval";
@@ -57,6 +66,10 @@ export interface Activity {
   inviteToken: string;
   shortCode: string;
   createdAt: string;
+  setting: Setting;
+  beginnerFriendly: boolean;
+  // Created through "quick plan": the host is looking for a few more people.
+  quick?: boolean;
   seeded?: boolean; // part of the demo data, already counted in the host's history
 }
 
@@ -76,6 +89,7 @@ export interface Join {
   refunded: number;
   invitedBy?: string;
   checkedInAt?: string;
+  seeded?: boolean; // demo data, already counted in the user's attendance history
 }
 
 export interface FriendRequest {
@@ -96,7 +110,9 @@ export type NotificationType =
   | "waitlist_promoted"
   | "waitlist_request"
   | "reminder"
-  | "review";
+  | "review"
+  | "friend_joined"
+  | "needs_people";
 
 export interface AppNotification {
   id: string;
@@ -131,6 +147,22 @@ export interface Invite {
 
 export const ANON = "anon";
 
+// "I might go": a softer signal than joining.
+export interface Interested {
+  userId: string;
+  activityId: string;
+  createdAt: string;
+}
+
+export interface Report {
+  id: string;
+  reporterId: string;
+  targetType: "activity" | "user";
+  targetId: string;
+  reason: string;
+  createdAt: string;
+}
+
 export interface UserSettings {
   push: boolean;
   email: boolean;
@@ -162,6 +194,8 @@ export interface Db {
   notifications: AppNotification[];
   reviews: Review[];
   invites: Invite[];
+  interested: Interested[];
+  reports: Report[];
   userSettings: Record<string, UserSettings>;
   dev: DevSettings;
 }
