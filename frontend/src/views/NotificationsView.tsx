@@ -5,15 +5,18 @@ import { useRouter } from "next/navigation";
 import {
   markAllNotificationsRead,
   markNotificationRead,
-  me,
-  notificationsFor,
-  useDb,
+  useMe,
+  useNotifications,
+  type ErrorCode,
 } from "@/api";
 import { Button, buttonClass } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/Skeleton";
 import { formatAgo } from "@/lib/format";
+import { toast } from "@/lib/toast";
 import type { NotificationType } from "@/lib/types";
+
+const TRANSIENT = new Set<ErrorCode>(["NETWORK", "SERVER", "RATE_LIMITED"]);
 
 const ICONS: Record<NotificationType, string> = {
   joined: "🎟️",
@@ -28,14 +31,17 @@ const ICONS: Record<NotificationType, string> = {
   review: "⭐",
   friend_joined: "🧑‍🤝‍🧑",
   needs_people: "📣",
+  payment_failed: "⚠️",
 };
 
 // /notifications: the in-app inbox.
 export function NotificationsView() {
   const router = useRouter();
-  const db = useDb();
+  const { me, loaded } = useMe();
+  // Only fetched once we know someone is logged in.
+  const { data, error, isPending, refetch } = useNotifications(Boolean(me));
 
-  if (!db) {
+  if (!loaded || (me && isPending)) {
     return (
       <div className="mx-auto max-w-2xl space-y-3 px-4 py-6">
         <Skeleton className="h-10 w-1/2" />
@@ -45,8 +51,7 @@ export function NotificationsView() {
     );
   }
 
-  const user = me(db);
-  if (!user) {
+  if (!me) {
     return (
       <EmptyState
         emoji="🔔"
@@ -61,15 +66,32 @@ export function NotificationsView() {
     );
   }
 
-  const items = notificationsFor(db, user.id);
+  if (!data) {
+    return (
+      <EmptyState
+        emoji="📡"
+        title="Couldn't load your alerts"
+        body={error?.message}
+        action={<Button onClick={() => refetch()}>Try again</Button>}
+      />
+    );
+  }
+
+  const items = data.items;
   const unread = items.filter((n) => !n.read).length;
+
+  // Marking read is best effort: the alert still opens if it fails.
+  const markAll = async () => {
+    const result = await markAllNotificationsRead();
+    if (!result.ok && TRANSIENT.has(result.code)) toast(result.message);
+  };
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-extrabold tracking-tight text-ink">Alerts</h1>
         {unread > 0 && (
-          <Button variant="ghost" onClick={markAllNotificationsRead}>
+          <Button variant="ghost" onClick={markAll}>
             Mark all read
           </Button>
         )}
@@ -88,7 +110,7 @@ export function NotificationsView() {
               <button
                 type="button"
                 onClick={() => {
-                  markNotificationRead(item.id);
+                  void markNotificationRead(item.id);
                   router.push(item.href);
                 }}
                 className={`flex w-full items-start gap-3 rounded-3xl p-3 text-left transition duration-200 hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.99] ${

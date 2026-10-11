@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { report } from "@/api";
+import { report, type ErrorCode } from "@/api";
 import { Button } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { Sheet } from "@/components/Sheet";
 import { toast } from "@/lib/toast";
+
+const TRANSIENT = new Set<ErrorCode>(["NETWORK", "SERVER", "RATE_LIMITED"]);
 
 const REASONS = {
   activity: ["Misleading or fake", "Unsafe", "Spam or selling something", "Inappropriate content"],
@@ -23,9 +25,17 @@ interface ReportSheetProps {
 
 export function ReportSheet({ open, onClose, targetType, targetId, name }: ReportSheetProps) {
   const [reason, setReason] = useState("");
+  const [sending, setSending] = useState(false);
 
-  const submit = () => {
-    report(targetType, targetId, reason);
+  const submit = async () => {
+    setSending(true);
+    const result = await report(targetType, targetId, reason);
+    setSending(false);
+    // Only a transient failure is worth a retry; the sheet stays open for it.
+    if (!result.ok && TRANSIENT.has(result.code)) {
+      toast(result.message);
+      return;
+    }
     setReason("");
     onClose();
     toast("Thanks. We'll review your report.");
@@ -45,7 +55,7 @@ export function ReportSheet({ open, onClose, targetType, targetId, name }: Repor
         ))}
       </div>
       <div className="mt-5 flex flex-col gap-2">
-        <Button disabled={!reason} onClick={submit}>
+        <Button disabled={!reason || sending} onClick={submit}>
           Send report
         </Button>
         <Button variant="secondary" onClick={onClose}>

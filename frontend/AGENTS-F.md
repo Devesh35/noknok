@@ -6,9 +6,9 @@ and never trust client state over server state for anything that matters.
 Pure helpers in `src/lib/` may mirror a rule for instant UI feedback, but the
 server's answer wins.
 
-Until the backend lands, `src/api/` is the mock data layer (localStorage).
-The rules below are written so that the swap to real calls touches `src/api/`
-only.
+`src/api/` is the data layer: hooks (`useSession`, `useActivity`, …) over GET
+endpoints and async functions returning `Result<T>` for writes. Views never
+know how the data is fetched.
 
 ## Non-negotiables
 
@@ -21,9 +21,10 @@ wish, so if you add a rule here, add its check too.
 2. **Every backend call goes through `apiFetch`** in `src/lib/api/client.ts`.
    No raw `fetch`, no endpoint strings in components.
    → eslint `no-restricted-globals` on `fetch` outside that file
-3. **Parse every response with zod** (`src/server/schemas/*`, shared) before
-   using it. Contract drift fails at the boundary, not as `undefined` three
-   components later.
+3. **Request bodies are typed by the shared zod schemas** (`src/lib/schemas.ts`)
+   and responses by the DTOs in `src/lib/types.ts`. The server validates every
+   body with the same schema, so a shape change fails at the boundary, not as
+   `undefined` three components later.
 4. **Coded errors get an inline state; only transient failures get a toast.**
    `FULL`, `PAST`, `NOT_VISIBLE`, `PAYMENT_REQUIRED`, `CONFLICT` each have a
    designed UI; a network error gets `toast()`. Branch on `code`, never on
@@ -64,7 +65,7 @@ wish, so if you add a rule here, add its check too.
 
 1. Add `src/views/<Name>View.tsx` with the four states (rule 5).
 2. Add `src/app/<route>/page.tsx` that renders it; for a dynamic route add
-   `generateMetadata` using `src/server/*` (today: `src/api/server.ts`).
+   `generateMetadata` using `src/server/*` directly.
 3. If it needs data, add the query/action to `src/api/` first; the view never
    knows whether it is mock or real.
 4. If it is private, add it to the redirect list in `proxy.ts` **and** keep
@@ -73,10 +74,9 @@ wish, so if you add a rule here, add its check too.
 
 ## Adding an API call
 
-1. Add the zod schema under `src/server/schemas/<domain>.ts` (input and
-   output).
-2. Add the request function in `src/api/<domain>.ts` using `apiFetch`,
-   returning `{ ok: true, data } | { ok: false, code }`.
-3. Add the coded-error UI the view needs (rule 4).
-4. In mock mode, implement the same function against localStorage in the
-   same file, behind `DATA_MODE === "mock"`.
+1. Add the body schema to `src/lib/schemas.ts` and the response DTO to
+   `src/lib/types.ts`.
+2. Add the route handler and service (see `AGENTS-B.md`).
+3. Add the hook or request function in `src/api/<domain>.ts` using
+   `apiFetch`/`safe`; writes call `invalidateAll()` on success.
+4. Add the coded-error UI the view needs (rule 4).

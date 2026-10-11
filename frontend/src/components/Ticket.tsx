@@ -54,11 +54,11 @@ export function TicketCard({
           }`}
         >
           {cancelled
-            ? `Cancelled · ${formatInr(join.refunded)} refunded`
+            ? `Cancelled · ${formatInr(join.refundedP)} refunded`
             : join.checkedInAt
               ? "Checked in ✓"
-              : join.ticketPaid + join.feePaid > 0
-                ? `Paid ${formatInr(join.ticketPaid + join.feePaid)}`
+              : join.ticketP + join.feeP > 0
+                ? `Paid ${formatInr(join.ticketP + join.feeP)}`
                 : "Free entry"}
         </span>
       </div>
@@ -74,21 +74,21 @@ export function PriceRows({ price, feeModel }: { price: PriceBreakdown; feeModel
     <dl>
       <div className={row}>
         <dt>Ticket</dt>
-        <dd>{formatInr(price.ticket)}</dd>
+        <dd>{formatInr(price.ticketP)}</dd>
       </div>
       <div className={row}>
         <dt>Platform fee{onJoiner ? "" : " (paid by host)"}</dt>
         <dd className={onJoiner ? "" : "text-faint line-through"}>
-          {formatInr(price.platformFee)}
+          {formatInr(price.platformFeeP)}
         </dd>
       </div>
       <div className={row}>
         <dt>GST on fee (placeholder)</dt>
-        <dd className={onJoiner ? "" : "text-faint line-through"}>{formatInr(price.gst)}</dd>
+        <dd className={onJoiner ? "" : "text-faint line-through"}>{formatInr(price.gstP)}</dd>
       </div>
       <div className="mt-1 flex items-center justify-between gap-4 border-t border-line pt-3 text-base font-bold text-ink">
         <dt>You pay</dt>
-        <dd>{formatInr(price.total)}</dd>
+        <dd>{formatInr(price.totalP)}</dd>
       </div>
     </dl>
   );

@@ -1,0 +1,34 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import { readProvider, type LatLng } from "@/lib/maps/provider";
+
+export interface VenueMapProps {
+  // Where the map opens and the pin starts.
+  center: LatLng;
+  // Street level when the venue is already known, city level otherwise.
+  zoomed: boolean;
+  // Moves map and pin when it changes (a search result was picked).
+  focus: (LatLng & { seq: number }) | null;
+  // The host tapped the map or dragged the pin.
+  onDrop: (lat: number, lng: number) => void;
+}
+
+function Placeholder() {
+  return <div aria-hidden="true" className="h-64 w-full animate-pulse rounded-3xl border border-line" />;
+}
+
+// Each map library is its own chunk, loaded only for the provider in use.
+const VenueMapOsm = dynamic(() => import("@/components/VenueMapOsm").then((m) => m.VenueMapOsm), {
+  ssr: false,
+  loading: Placeholder,
+});
+const VenueMapGoogle = dynamic(() => import("@/components/VenueMapGoogle").then((m) => m.VenueMapGoogle), {
+  ssr: false,
+  loading: Placeholder,
+});
+
+// The draggable-pin map inside VenuePicker, on whichever provider is set.
+export function VenueMap(props: VenueMapProps) {
+  return readProvider() === "google" ? <VenueMapGoogle {...props} /> : <VenueMapOsm {...props} />;
+}

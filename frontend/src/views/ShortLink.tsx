@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
-import { activityByCode, useDb } from "@/api";
-import { buttonClass } from "@/components/Button";
+import { useShortCode } from "@/api";
+import { Button, buttonClass } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/Skeleton";
 
@@ -12,15 +12,14 @@ import { Skeleton } from "@/components/Skeleton";
 export function ShortLink({ code }: { code: string }) {
   const router = useRouter();
   const query = useSearchParams().toString();
-  const db = useDb();
-  const activity = db ? activityByCode(db, code) : undefined;
-  const target = activity ? `/party/${activity.id}${query ? `?${query}` : ""}` : null;
+  const { data, error, refetch } = useShortCode(code);
+  const target = data ? `/party/${data.activityId}${query ? `?${query}` : ""}` : null;
 
   useEffect(() => {
     if (target) router.replace(target);
   }, [target, router]);
 
-  if (db && !activity) {
+  if (error?.code === "NOT_FOUND") {
     return (
       <EmptyState
         emoji="🔗"
@@ -31,6 +30,16 @@ export function ShortLink({ code }: { code: string }) {
             Explore activities
           </Link>
         }
+      />
+    );
+  }
+  if (error) {
+    return (
+      <EmptyState
+        emoji="📡"
+        title="Couldn't open this link"
+        body={error.message}
+        action={<Button onClick={() => refetch()}>Try again</Button>}
       />
     );
   }

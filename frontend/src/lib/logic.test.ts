@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { priceBreakdown } from "@/lib/fees";
+import { breakdownForPrice, priceBreakdown, ticketFromTotal } from "@/lib/fees";
 import type { FriendRequest, Join } from "@/lib/types";
 import { buildGraph, canSee, mutualFriendIds } from "@/lib/visibility";
 import { joinsToPromote, waitlistPosition } from "@/lib/waitlist";
@@ -53,28 +53,28 @@ describe("visibility", () => {
 
 describe("fees", () => {
   it("adds the fee and GST on top of the ticket in the joiner model", () => {
-    expect(priceBreakdown(1000, "joiner", 5)).toEqual({
-      ticket: 1000,
-      platformFee: 50,
-      gst: 9,
-      total: 1059,
-      hostReceives: 1000,
+    expect(priceBreakdown(100000, "joiner", 5)).toEqual({
+      ticketP: 100000,
+      platformFeeP: 5000,
+      gstP: 900,
+      totalP: 105900,
+      hostReceivesP: 100000,
     });
   });
 
   it("takes the fee and GST out of the host's share in the host model", () => {
-    expect(priceBreakdown(1000, "host", 5)).toEqual({
-      ticket: 1000,
-      platformFee: 50,
-      gst: 9,
-      total: 1000,
-      hostReceives: 941,
+    expect(priceBreakdown(100000, "host", 5)).toEqual({
+      ticketP: 100000,
+      platformFeeP: 5000,
+      gstP: 900,
+      totalP: 100000,
+      hostReceivesP: 94100,
     });
   });
 
   it("charges nothing on free activities", () => {
-    expect(priceBreakdown(0, "joiner", 5).total).toBe(0);
-    expect(priceBreakdown(0, "host", 5).hostReceives).toBe(0);
+    expect(priceBreakdown(0, "joiner", 5).totalP).toBe(0);
+    expect(priceBreakdown(0, "host", 5).hostReceivesP).toBe(0);
   });
 });
 
@@ -108,5 +108,26 @@ describe("waitlist", () => {
   it("never auto-promotes when the host approves, or the activity is cancelled", () => {
     expect(joinsToPromote(joins, { ...activity, waitlistMode: "approval" })).toEqual([]);
     expect(joinsToPromote(joins, { ...activity, status: "cancelled" })).toEqual([]);
+  });
+});
+
+describe("ticketFromTotal", () => {
+  it("is the total itself when the host pays the fee", () => {
+    expect(ticketFromTotal(100000, "host", 5)).toBe(100000);
+  });
+
+  it("derives a ticket whose joiner total comes back to what was typed", () => {
+    const ticket = ticketFromTotal(52950, "joiner", 5);
+    expect(priceBreakdown(ticket, "joiner", 5).totalP).toBe(52950);
+  });
+});
+
+describe("breakdownForPrice", () => {
+  it("keeps the total equal to the price and takes the fee from the host", () => {
+    const b = breakdownForPrice(50000, "joiner", 5);
+    expect(b.totalP).toBe(50000);
+    expect(b.hostReceivesP + b.platformFeeP + b.gstP).toBe(50000);
+    expect(breakdownForPrice(50000, "host", 5).totalP).toBe(50000);
+    expect(breakdownForPrice(0, "joiner", 5).hostReceivesP).toBe(0);
   });
 });

@@ -14,8 +14,27 @@ const timeFormat = new Intl.DateTimeFormat("en-IN", {
 
 const relativeFormat = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
-export function formatPrice(priceInr: number): string {
-  return priceInr === 0 ? "FREE" : `₹${priceInr.toLocaleString("en-IN")}`;
+// Money arrives as integer paise and is turned into rupees only here.
+export function formatInr(amountP: number): string {
+  const rupees = amountP / 100;
+  const whole = Number.isInteger(rupees);
+  return `₹${rupees.toLocaleString("en-IN", {
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+export function formatPrice(priceP: number): string {
+  return priceP === 0 ? "FREE" : formatInr(priceP);
+}
+
+// For inputs: paise -> "250", and back.
+export function paiseToRupees(amountP: number): number {
+  return amountP / 100;
+}
+
+export function rupeesToPaise(rupees: number): number {
+  return Math.round(rupees * 100);
 }
 
 export function formatDate(iso: string): string {
@@ -68,8 +87,4 @@ export function formatAgo(iso: string): string {
   const hours = Math.round(minutes / 60);
   if (Math.abs(hours) < 24) return relativeFormat.format(hours, "hour");
   return relativeFormat.format(Math.round(hours / 24), "day");
-}
-
-export function formatInr(amount: number): string {
-  return `₹${amount.toLocaleString("en-IN")}`;
 }

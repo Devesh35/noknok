@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { getActivityPreview } from "@/api/server";
+import { getActivityPreview } from "@/server/activities";
 import { PageTransition } from "@/components/PageTransition";
 import { PartyView } from "@/views/PartyView";
 
@@ -8,7 +8,7 @@ import { PartyView } from "@/views/PartyView";
 // gets a preview card. Private plans don't leak their details into previews.
 export async function generateMetadata({ params }: PageProps<"/party/[id]">): Promise<Metadata> {
   const { id } = await params;
-  const preview = getActivityPreview(id);
+  const preview = await getActivityPreview(id);
   if (!preview) return { title: "Activity on NokNok" };
   if (preview.isPrivate) {
     return { title: "A private plan", description: "You've been invited to a plan on NokNok." };
@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: PageProps<"/party/[id]">): Pr
     openGraph: {
       title: preview.title,
       description: preview.description,
-      images: [preview.coverUrl],
+      images: preview.coverUrl ? [preview.coverUrl] : undefined,
     },
   };
 }

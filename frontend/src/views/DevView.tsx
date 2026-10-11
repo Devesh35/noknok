@@ -5,17 +5,17 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   advanceTime,
+  devLogIn,
   endActivityNow,
-  isPast,
-  logIn,
   logOut,
-  me,
-  PAYMENT_MODE,
   resetDemo,
   updateDev,
-  useDb,
+  useDev,
+  useSession,
+  type Result,
 } from "@/api";
 import { Button } from "@/components/Button";
+import { EmptyState } from "@/components/EmptyState";
 import { Toggle } from "@/components/Field";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 import { Skeleton } from "@/components/Skeleton";
@@ -43,13 +43,32 @@ const TIME_JUMPS = [
   { label: "+3 days", ms: 3 * DAY_MS },
 ];
 
+// Runs a dev action; a failure is only ever worth a toast here.
+async function run<T>(action: Promise<Result<T>>, success?: string) {
+  const result = await action;
+  if (!result.ok) toast(result.message);
+  else if (success) toast(success);
+  return result.ok;
+}
+
 // /dev: hidden page for running demos. Not linked from the main navigation.
 export function DevView() {
   const router = useRouter();
-  const db = useDb();
+  const { data: session } = useSession();
+  const { data, error, refetch } = useDev();
   const [endId, setEndId] = useState("");
 
-  if (!db) {
+  if (error) {
+    return (
+      <EmptyState
+        emoji="🛠️"
+        title="Developer tools aren't available"
+        body={error.message}
+        action={<Button onClick={() => refetch()}>Try again</Button>}
+      />
+    );
+  }
+  if (!data || !session) {
     return (
       <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">
         <Skeleton className="h-10 w-1/2" />
@@ -58,8 +77,9 @@ export function DevView() {
     );
   }
 
-  const current = me(db);
-  const upcoming = db.activities.filter((a) => a.status === "active" && !isPast(a)).sort(byStart);
+  const current = session.user;
+  const { dev } = data;
+  const upcoming = [...data.upcoming].sort(byStart);
   const activityOptions: SelectOption<string>[] = upcoming.map((a) => ({
     value: a.id,
     label: a.title,
@@ -70,7 +90,7 @@ export function DevView() {
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight text-ink">Developer tools</h1>
         <p className="text-sm text-soft">
-          Controls for demoing the prototype. Everything here only changes data on this device.
+          Controls for demoing the prototype. Everything here changes the shared database.
         </p>
       </div>
 
@@ -81,13 +101,13 @@ export function DevView() {
           {current ? ` You are ${current.name}.` : " You are logged out."}
         </p>
         <div className="space-y-2">
-          {db.users.map((user) => (
+          {data.users.map((user) => (
             <UserRow
               key={user.id}
               user={user}
               note={`+91 ${user.phone}`}
               action={
-                user.id === db.meId ? (
+                user.id === current?.id ? (
                   <span className="shrink-0 rounded-full bg-brand-600/10 px-3 py-1.5 text-xs font-semibold text-brand-700">
                     Current
                   </span>
@@ -95,10 +115,7 @@ export function DevView() {
                   <Button
                     variant="secondary"
                     className="shrink-0"
-                    onClick={() => {
-                      logIn(user.id);
-                      toast(`You are now ${user.name}`);
-                    }}
+                    onClick={() => run(devLogIn(user.id), `You are now ${user.name}`)}
                   >
                     Switch
                   </Button>
@@ -108,7 +125,7 @@ export function DevView() {
           ))}
         </div>
         {current && (
-          <Button variant="ghost" onClick={logOut}>
+          <Button variant="ghost" onClick={() => run(logOut())}>
             Log out
           </Button>
         )}
@@ -121,20 +138,20 @@ export function DevView() {
           <span className="font-semibold text-ink">
             {formatDateTime(new Date(now()).toISOString())}
           </span>
-          {db.dev.timeOffsetMs > 0 && ` (${Math.round(db.dev.timeOffsetMs / HOUR_MS)}h ahead)`}.
+          {dev.timeOffsetMs > 0 && ` (${Math.round(dev.timeOffsetMs / HOUR_MS)}h ahead)`}.
           Jump forward to trigger reminders, close refund windows, end activities and release
           payouts.
         </p>
         <div className="flex flex-wrap gap-2">
           {TIME_JUMPS.map((jump) => (
-            <Button key={jump.label} variant="secondary" onClick={() => advanceTime(jump.ms)}>
+            <Button key={jump.label} variant="secondary" onClick={() => run(advanceTime(jump.ms))}>
               {jump.label}
             </Button>
           ))}
           <Button
             variant="ghost"
-            disabled={db.dev.timeOffsetMs === 0}
-            onClick={() => updateDev({ timeOffsetMs: 0 })}
+            disabled={dev.timeOffsetMs === 0}
+            onClick={() => run(updateDev({ timeOffsetMs: 0 }))}
           >
             Back to real time
           </Button>
@@ -152,10 +169,12 @@ export function DevView() {
             />
             <Button
               disabled={!endId}
-              onClick={() => {
-                endActivityNow(endId);
-                setEndId("");
-                toast("Activity ended. Joiners can now rate the host.");
+              onClick={async () => {
+                const ok = await run(
+                  endActivityNow(endId),
+                  "Activity ended. Joiners can now rate the host.",
+                );
+                if (ok) setEndId("");
               }}
             >
               End
@@ -169,8 +188,8 @@ export function DevView() {
         <Toggle
           label="Auto-accept friend requests"
           hint="Adding a friend connects you instantly, without the other person accepting."
-          checked={db.dev.autoAcceptFriends}
-          onChange={(autoAcceptFriends) => updateDev({ autoAcceptFriends })}
+          checked={dev.autoAcceptFriends}
+          onChange={(autoAcceptFriends) => run(updateDev({ autoAcceptFriends }))}
         />
       </section>
 
@@ -179,73 +198,44 @@ export function DevView() {
         <p className="text-sm text-soft">
           Mode:{" "}
           <span className="font-mono font-semibold text-ink">
-            {PAYMENT_MODE === "razorpay_test" ? "razorpay_test" : "fake"}
+            {session.paymentProvider} · {session.paymentEnv}
           </span>{" "}
-          (set <span className="font-mono">NEXT_PUBLIC_PAYMENTS</span> in .env.local and restart).
+          (set <span className="font-mono">PAYMENT_PROVIDER</span> and{" "}
+          <span className="font-mono">PAYMENT_ENV</span> in .env.local and restart).
         </p>
         <SelectMenu
           variant="field"
           label="Who pays the platform fee"
-          value={db.dev.feeModel}
-          onChange={(feeModel) => updateDev({ feeModel })}
+          value={dev.feeModel}
+          onChange={(feeModel) => run(updateDev({ feeModel }))}
           options={FEE_MODELS}
         />
         <SelectMenu
           variant="field"
           label="Fee size"
-          value={String(db.dev.feePercent)}
-          onChange={(value) => updateDev({ feePercent: Number(value) })}
+          value={String(dev.feePercent)}
+          onChange={(value) => run(updateDev({ feePercent: Number(value) }))}
           options={FEE_PERCENTS}
         />
         <Toggle
           label="Fail the next payment"
           hint="Fake mode only. Shows the failure and retry state once."
-          checked={db.dev.failNextPayment}
-          onChange={(failNextPayment) => updateDev({ failNextPayment })}
+          checked={dev.failNextPayment}
+          onChange={(failNextPayment) => run(updateDev({ failNextPayment }))}
         />
-      </section>
-
-      <section className={CARD}>
-        <h2 className={HEADING}>Reports ({db.reports.length})</h2>
-        {db.reports.length === 0 ? (
-          <p className="text-sm text-soft">
-            Nothing reported. Reports made from a plan or profile land here; a real backend would
-            send them to a moderation queue.
-          </p>
-        ) : (
-          <ul className="space-y-2 text-sm text-body">
-            {db.reports.map((item) => {
-              const reporter = db.users.find((u) => u.id === item.reporterId)?.name ?? "Someone";
-              const target =
-                item.targetType === "user"
-                  ? db.users.find((u) => u.id === item.targetId)?.name
-                  : db.activities.find((a) => a.id === item.targetId)?.title;
-              return (
-                <li key={item.id}>
-                  {reporter} reported {item.targetType === "user" ? "user" : "plan"}{" "}
-                  <span className="font-semibold text-ink">{target ?? item.targetId}</span>:{" "}
-                  {item.reason}
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </section>
 
       <section className={CARD}>
         <h2 className={HEADING}>Reset</h2>
         <p className="text-sm text-soft">
-          Restores the seeded users, activities and friendships, with dates relative to today, and
-          logs you out.
+          Deletes every user, activity, join and notification in the database and logs you out.
         </p>
         <Button
-          onClick={() => {
-            resetDemo();
-            toast("Demo data reset");
-            router.push("/");
+          onClick={async () => {
+            if (await run(resetDemo(), "All data deleted")) router.push("/");
           }}
         >
-          Reset demo data
+          Delete all data
         </Button>
       </section>
 

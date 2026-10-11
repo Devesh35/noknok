@@ -14,16 +14,8 @@ traced or replaced.
 | covers/a4.jpg | 1610890716171-6b1bb98ffd09 |
 | covers/a5.jpg | 1534438327276-14e5300c3a48 |
 | covers/a6.jpg | 1530103862676-de8c9debad1d |
-| covers/a7.jpg | 1531415074968-036ba1b575da |
 | covers/a8.jpg | 1585699324551-f6c309eedeca |
-| covers/a9.jpg | 1626224583764-f87db24ac4ea |
-| covers/a10.jpg | 1507525428034-b723cf961d3e |
-| covers/a11.jpg | 1461360228754-6e81c478b882 |
 | covers/a12.jpg | 1544367567-0f2fcb009e0b |
-| covers/a13.jpg | 1516280440614-37939bbacd81 |
-| covers/a14.jpg | 1464822759023-fed622ff2c3b |
-| covers/a15.jpg | 1431324155629-1a6deb1dec8d |
-| covers/a16.jpg | 1540575467063-178a50c2df87 |
 | avatars/u0.jpg | 1507003211169-0a1dd7228f2d |
 | avatars/u1.jpg | 1494790108377-be9c29b29330 |
 | avatars/u2.jpg | 1500648767791-00dcc994a43e |

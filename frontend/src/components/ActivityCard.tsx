@@ -22,7 +22,6 @@ interface ActivityCardProps {
   compact?: boolean;
   // The viewer may not see this activity: details are hidden behind a lock.
   locked?: boolean;
-  distanceKm?: number;
   // Short status shown instead of the going count, e.g. "Waitlist #2".
   note?: string;
   // Distinguishes cards for the same activity shown in different lists on one page.
@@ -34,10 +33,6 @@ interface ActivityCardProps {
 
 const MAX_FACES = 4;
 
-function formatDistance(km: number): string {
-  return km < 10 ? `${km.toFixed(1)} km away` : `${Math.round(km)} km away`;
-}
-
 export function ActivityCard({
   activity,
   going,
@@ -46,7 +41,6 @@ export function ActivityCard({
   friends = [],
   compact = false,
   locked = false,
-  distanceKm,
   note,
   scope = "list",
   preview = false,
@@ -54,7 +48,7 @@ export function ActivityCard({
 }: ActivityCardProps) {
   const morphKey = `${scope}:${activity.id}`;
   const isMorphSource = useIsMorphSource(morphKey);
-  const price = formatPrice(activity.priceInr);
+  const price = formatPrice(activity.priceP);
   const cancelled = activity.status === "cancelled";
   const place = `${activity.venueName} · ${activity.city}`;
   const status = cancelled ? "Cancelled" : (note ?? `${going}/${activity.capacity} going`);
@@ -159,7 +153,7 @@ export function ActivityCard({
       <div className="relative">
         {cover}
         <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-          <CategoryBadge category={activity.category} />
+          <CategoryBadge category={activity.category} subcategory={activity.subcategory} />
           <VisibilityBadge visibility={activity.visibility} />
         </div>
         <span className="absolute right-3 bottom-3 rounded-full bg-surface/85 px-3 py-1.5 text-sm font-bold text-ink shadow backdrop-blur">
@@ -171,9 +165,6 @@ export function ActivityCard({
         <p className="truncate text-base text-soft">{formatDateTime(activity.startsAt)}</p>
         <p className="truncate text-base text-muted">
           {place}
-          {distanceKm !== undefined && (
-            <span className="font-medium text-location"> · {formatDistance(distanceKm)}</span>
-          )}
         </p>
         <div className="flex items-center gap-2 pt-2">
           {attendees.length > 0 && (

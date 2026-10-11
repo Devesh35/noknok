@@ -1,9 +1,7 @@
 "use client";
 
-// Browser capabilities that live outside the mock database: the visitor's
-// location and the "install app" prompt.
+// Browser capabilities that live outside the API: the "install app" prompt.
 import { useSyncExternalStore } from "react";
-import type { Coords } from "@/lib/activity";
 
 function createValueStore<T>(initial: T) {
   const listeners = new Set<() => void>();
@@ -21,36 +19,6 @@ function createValueStore<T>(initial: T) {
       };
     },
   };
-}
-
-// ---------- Location ----------
-
-const coordsStore = createValueStore<Coords | null>(null);
-
-export function useCoords(): Coords | null {
-  return useSyncExternalStore(coordsStore.subscribe, coordsStore.get, () => null);
-}
-
-export function clearCoords() {
-  coordsStore.set(null);
-}
-
-export function requestCoords(): Promise<Coords> {
-  return new Promise((resolve, reject) => {
-    if (!("geolocation" in navigator)) {
-      reject(new Error("Location is not supported on this device"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const coords = { lat: position.coords.latitude, lng: position.coords.longitude };
-        coordsStore.set(coords);
-        resolve(coords);
-      },
-      () => reject(new Error("Location permission was not granted")),
-      { timeout: 10_000 },
-    );
-  });
 }
 
 // ---------- Install prompt (Android/desktop Chrome) ----------

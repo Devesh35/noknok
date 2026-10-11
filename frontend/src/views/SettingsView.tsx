@@ -2,18 +2,18 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   deleteAccount,
-  isHandleTaken,
+  isHandleAvailable,
   logOut,
-  me,
-  settingsFor,
   toggleBlock,
   updateProfile,
   updateSettings,
-  useDb,
-  userById,
+  useBlockedUsers,
+  useMe,
+  type ErrorCode,
+  type Result,
 } from "@/api";
 import { Avatar } from "@/components/Avatar";
 import { Button, buttonClass } from "@/components/Button";
@@ -27,11 +27,22 @@ import { UserRow, VerifiedBadges } from "@/components/UserBits";
 import { CATEGORIES, CATEGORY_META } from "@/lib/activity";
 import { isStandalone, promptInstall, useCanInstall } from "@/lib/device";
 import { toast } from "@/lib/toast";
-import { CITIES, type Category, type City, type Db, type User, type UserSettings } from "@/lib/types";
+import { CITIES, type Category, type City, type Me, type UserSettings } from "@/lib/types";
 
 const CARD = "glass-card space-y-3 rounded-3xl p-4 md:p-5";
 const HEADING = "text-lg font-bold text-ink";
 const REMINDER_DEMO_MS = 10_000;
+const HANDLE_CHECK_MS = 300;
+const HANDLE_PATTERN = /^[a-z0-9_]{3,20}$/;
+const TRANSIENT = new Set<ErrorCode>(["NETWORK", "SERVER", "RATE_LIMITED"]);
+
+// Settings controls have no inline failure state of their own: a failed save
+// tells the user and the control snaps back on refetch.
+function reportFailure(result: Result<unknown>): boolean {
+  if (result.ok) return true;
+  toast(TRANSIENT.has(result.code) ? result.message : "That couldn't be saved. Try again.");
+  return false;
+}
 
 const CITY_OPTIONS: SelectOption<City>[] = CITIES.map((city) => ({ value: city, label: city }));
 const PRIVACY_OPTIONS: SelectOption<UserSettings["joinedVisibility"]>[] = [
@@ -44,7 +55,28 @@ const AVATAR_PRESETS = ["u0", "u1", "u2", "u3", "u4", "u5", "u6", "u7"].map(
   (id) => `/images/avatars/${id}.jpg`,
 );
 
-function ProfileForm({ db, user }: { db: Db; user: User }) {
+// Asks the server whether a handle is free, a beat after typing stops. null
+// while a check is in flight. The user's own handle is always theirs.
+function useHandleAvailable(handle: string, own: string): boolean | null {
+  const [checked, setChecked] = useState<{ handle: string; available: boolean } | null>(null);
+  const needsCheck = handle !== own && HANDLE_PATTERN.test(handle);
+  useEffect(() => {
+    if (!needsCheck) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const available = await isHandleAvailable(handle);
+      if (!cancelled) setChecked({ handle, available });
+    }, HANDLE_CHECK_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [handle, needsCheck]);
+  if (!needsCheck) return true;
+  return checked?.handle === handle ? checked.available : null;
+}
+
+function ProfileForm({ user }: { user: Me }) {
   const [name, setName] = useState(user.name);
   const [handle, setHandle] = useState(user.handle);
   const [bio, setBio] = useState(user.bio);
@@ -52,12 +84,16 @@ function ProfileForm({ db, user }: { db: Db; user: User }) {
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl);
   const [interests, setInterests] = useState<Category[]>(user.interests);
   const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  // Set when the server rejects the handle on save, in case the check missed it.
+  const [takenHandle, setTakenHandle] = useState<string | null>(null);
+  const available = useHandleAvailable(handle, user.handle);
 
   const errors = {
     name: name.trim() ? "" : "Enter your name",
-    handle: !/^[a-z0-9_]{3,20}$/.test(handle)
+    handle: !HANDLE_PATTERN.test(handle)
       ? "3-20 characters: lowercase letters, numbers or _"
-      : isHandleTaken(db, handle, user.id)
+      : available === false || handle === takenHandle
         ? `@${handle} is already taken`
         : "",
   };
@@ -67,12 +103,23 @@ function ProfileForm({ db, user }: { db: Db; user: User }) {
       current.includes(category) ? current.filter((c) => c !== category) : [...current, category],
     );
 
-  const save = (event: FormEvent) => {
+  const save = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitted(true);
-    if (errors.name || errors.handle) return;
-    updateProfile({ name: name.trim(), handle, bio: bio.trim(), city, avatarUrl, interests });
-    toast("Profile saved");
+    if (errors.name || errors.handle || available === null) return;
+    setSaving(true);
+    const result = await updateProfile({
+      name: name.trim(),
+      handle,
+      bio: bio.trim(),
+      city,
+      avatarUrl,
+      interests,
+    });
+    setSaving(false);
+    if (result.ok) toast("Profile saved");
+    else if (result.code === "HANDLE_TAKEN") setTakenHandle(handle);
+    else reportFailure(result);
   };
 
   return (
@@ -139,7 +186,7 @@ function ProfileForm({ db, user }: { db: Db; user: User }) {
           ))}
         </div>
       </div>
-      <Button type="submit" className="w-full">
+      <Button type="submit" className="w-full" disabled={saving}>
         Save profile
       </Button>
     </form>
@@ -170,11 +217,12 @@ async function enableReminders(): Promise<boolean> {
 // /settings: profile, notifications, privacy, account.
 export function SettingsView() {
   const router = useRouter();
-  const db = useDb();
+  const { me: user, loaded } = useMe();
+  const blockedQuery = useBlockedUsers(Boolean(user));
   const canInstall = useCanInstall();
   const [sheet, setSheet] = useState<"delete" | "install" | null>(null);
 
-  if (!db) {
+  if (!loaded) {
     return (
       <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">
         <Skeleton className="h-10 w-1/2" />
@@ -183,7 +231,6 @@ export function SettingsView() {
     );
   }
 
-  const user = me(db);
   if (!user) {
     return (
       <EmptyState
@@ -198,10 +245,16 @@ export function SettingsView() {
     );
   }
 
-  const settings = settingsFor(db, user.id);
-  const blocked = settings.blockedIds
-    .map((id) => userById(db, id))
-    .filter((u): u is User => u !== undefined);
+  const settings = user.settings;
+  const blocked = blockedQuery.data?.items;
+
+  const setSetting = async (patch: Partial<UserSettings>) => {
+    reportFailure(await updateSettings(patch));
+  };
+
+  const unblock = async (person: { id: string; name: string }) => {
+    if (reportFailure(await toggleBlock(person.id))) toast(`Unblocked ${person.name}`);
+  };
 
   const install = async () => {
     if (isStandalone()) toast("NokNok is already installed");
@@ -219,7 +272,7 @@ export function SettingsView() {
         </Link>
       </div>
 
-      <ProfileForm key={user.id} db={db} user={user} />
+      <ProfileForm key={user.id} user={user} />
 
       <section className={CARD}>
         <h2 className={HEADING}>Verification</h2>
@@ -243,21 +296,21 @@ export function SettingsView() {
           hint="Asks for permission, then sends a test notification."
           checked={settings.push}
           onChange={async (checked) => {
-            if (!checked) updateSettings({ push: false });
-            else if (await enableReminders()) updateSettings({ push: true });
+            if (!checked) setSetting({ push: false });
+            else if (await enableReminders()) setSetting({ push: true });
           }}
         />
         <Toggle
           label="WhatsApp"
           hint="Join confirmations and reminders."
           checked={settings.whatsapp}
-          onChange={(whatsapp) => updateSettings({ whatsapp })}
+          onChange={(whatsapp) => setSetting({ whatsapp })}
         />
-        <Toggle label="SMS" checked={settings.sms} onChange={(sms) => updateSettings({ sms })} />
+        <Toggle label="SMS" checked={settings.sms} onChange={(sms) => setSetting({ sms })} />
         <Toggle
           label="Email"
           checked={settings.email}
-          onChange={(email) => updateSettings({ email })}
+          onChange={(email) => setSetting({ email })}
         />
         <p className="text-xs text-muted">
           WhatsApp, SMS and email are sent by a server, so in the prototype these only save your
@@ -271,12 +324,23 @@ export function SettingsView() {
           variant="field"
           label="Who can see the activities I've joined"
           value={settings.joinedVisibility}
-          onChange={(joinedVisibility) => updateSettings({ joinedVisibility })}
+          onChange={(joinedVisibility) => setSetting({ joinedVisibility })}
           options={PRIVACY_OPTIONS}
         />
         <div>
           <p className="mb-2 text-sm font-medium text-body">Blocked users</p>
-          {blocked.length === 0 ? (
+          {blocked === undefined ? (
+            blockedQuery.isPending ? (
+              <Skeleton className="h-16 w-full rounded-3xl" />
+            ) : (
+              <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
+                Couldn&apos;t load your blocked list.
+                <Button variant="ghost" onClick={() => blockedQuery.refetch()}>
+                  Try again
+                </Button>
+              </p>
+            )
+          ) : blocked.length === 0 ? (
             <p className="text-sm text-muted">
               Nobody. Block someone from their profile to hide their activities.
             </p>
@@ -287,7 +351,7 @@ export function SettingsView() {
                   key={person.id}
                   user={person}
                   action={
-                    <Button variant="secondary" onClick={() => toggleBlock(person.id)}>
+                    <Button variant="secondary" onClick={() => unblock(person)}>
                       Unblock
                     </Button>
                   }
@@ -314,9 +378,8 @@ export function SettingsView() {
         <Button
           variant="secondary"
           className="w-full"
-          onClick={() => {
-            logOut();
-            router.push("/");
+          onClick={async () => {
+            if (reportFailure(await logOut())) router.push("/");
           }}
         >
           Log out
@@ -328,13 +391,13 @@ export function SettingsView() {
 
       <Sheet open={sheet === "delete"} onClose={() => setSheet(null)} title="Delete your account?">
         <p className="text-sm text-soft">
-          In the prototype this wipes everything stored on this device (your account, plans,
-          friends and anything you hosted) and restores the demo data.
+          This removes your account, your plans, your tickets and your friends. It can&apos;t be
+          undone.
         </p>
         <div className="mt-5 flex flex-col gap-2">
           <Button
-            onClick={() => {
-              deleteAccount();
+            onClick={async () => {
+              if (!reportFailure(await deleteAccount())) return;
               toast("Account deleted");
               router.push("/");
             }}

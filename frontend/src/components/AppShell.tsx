@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { me, runClock, unreadCount, useDb } from "@/api";
+import { invalidateAll, useSession } from "@/api";
 import { Avatar } from "@/components/Avatar";
 import { buttonClass } from "@/components/Button";
 import { LogoMark } from "@/components/LogoMark";
@@ -11,7 +11,7 @@ import { BellIcon, HomeIcon, PlusIcon, SearchIcon, UserIcon } from "@/components
 
 export const FOCUS_SEARCH_EVENT = "noknok:focus-search";
 
-const CLOCK_INTERVAL_MS = 60_000;
+const REFRESH_INTERVAL_MS = 60_000;
 
 export function Logo({ className = "" }: { className?: string }) {
   return (
@@ -37,16 +37,16 @@ function UnreadDot({ count }: { count: number }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const db = useDb();
-  const user = db ? me(db) : null;
-  const unread = db ? unreadCount(db) : 0;
-  const loaded = db !== null;
+  const { data: session } = useSession();
+  const user = session?.user ?? null;
+  const unread = session?.unread ?? 0;
+  const loaded = session !== undefined;
 
-  // Time-based notifications (reminders, review prompts) a server would send.
+  // The server sends reminders and review prompts on its own clock; refetch
+  // so the badges pick them up without a reload.
   useEffect(() => {
     if (!loaded) return;
-    runClock();
-    const timer = setInterval(runClock, CLOCK_INTERVAL_MS);
+    const timer = setInterval(() => void invalidateAll(), REFRESH_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [loaded]);
 

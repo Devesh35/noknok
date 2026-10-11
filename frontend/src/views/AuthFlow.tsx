@@ -2,26 +2,20 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import {
-  DEMO_OTP,
-  DEMO_PHONE,
-  logIn,
-  registerUser,
-  useDb,
-  userByPhone,
-  verifyOtp,
-} from "@/api";
+import { registerUser, sendLoginCode, useSession, verifyLoginCode, type Result } from "@/api";
 import { Logo } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Checkbox, Input } from "@/components/Field";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
+import { USES_EMULATOR } from "@/lib/firebase/client";
 import { toast } from "@/lib/toast";
 import { CITIES, type City } from "@/lib/types";
 
 type Step = "phone" | "otp" | "details";
 
 const CITY_OPTIONS: SelectOption<City>[] = CITIES.map((city) => ({ value: city, label: city }));
-const SEND_MS = 600; // pretend to send an SMS
+// The invisible reCAPTCHA attaches here; it stays mounted across steps.
+const RECAPTCHA_ID = "recaptcha-container";
 
 const HEADINGS: Record<Step, { title: string; body: string }> = {
   phone: {
@@ -39,19 +33,37 @@ function safeNext(next: string | null): string | null {
     : null;
 }
 
+// What to say under the field for a failed call; null means toast it instead.
+function inlineMessage(result: Extract<Result<unknown>, { ok: false }>): string | null {
+  switch (result.code) {
+    case "OTP_INVALID":
+      return "That code isn't right. Check the text and try again.";
+    case "OTP_EXPIRED":
+      return "That code has expired. Resend to get a new one.";
+    case "RATE_LIMITED":
+      return "Too many attempts. Wait a minute and try again.";
+    case "INVALID":
+    case "FORBIDDEN":
+      return result.message;
+    default:
+      return null;
+  }
+}
+
 // Phone → OTP → (new users only) name and city. One flow for login and sign-up.
 export function AuthFlow() {
   const router = useRouter();
   const next = safeNext(useSearchParams().get("next"));
-  const db = useDb();
+  const { data: session } = useSession();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
+  const [signupToken, setSignupToken] = useState("");
   const [name, setName] = useState("");
   const [city, setCityValue] = useState<City | "">("");
   const [terms, setTerms] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [otpError, setOtpError] = useState("");
+  const [fieldError, setFieldError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const done = () => router.replace(next ?? "/u/me");
@@ -64,40 +76,79 @@ export function AuthFlow() {
   };
   const show = (error: string) => (submitted && error ? error : undefined);
 
+  // Shows a coded failure under the field, or toasts a transient one.
+  const fail = (result: Extract<Result<unknown>, { ok: false }>) => {
+    const message = inlineMessage(result);
+    if (message) setFieldError(message);
+    else toast(result.message);
+  };
+
   const sendCode = async () => {
+    if (busy) return;
     setBusy(true);
-    await new Promise((resolve) => setTimeout(resolve, SEND_MS));
+    const result = await sendLoginCode(phone, RECAPTCHA_ID);
     setBusy(false);
+    if (!result.ok) {
+      fail(result);
+      return;
+    }
     setOtp("");
-    setOtpError("");
+    setFieldError("");
     setSubmitted(false);
     setStep("otp");
-    toast(`Demo: your code is ${DEMO_OTP}`);
+    // The Firebase emulator keeps the code instead of texting it.
+    if (result.data.devCode) toast(`Dev mode: your code is ${result.data.devCode}`);
+  };
+
+  const verify = async () => {
+    setBusy(true);
+    const result = await verifyLoginCode(otp);
+    setBusy(false);
+    if (!result.ok) {
+      fail(result);
+      return;
+    }
+    if (result.data.registered) {
+      done();
+      return;
+    }
+    setSignupToken(result.data.signupToken);
+    setSubmitted(false);
+    setFieldError("");
+    setStep("details");
+  };
+
+  const register = async () => {
+    setBusy(true);
+    const result = await registerUser({ signupToken, name, city: city as City });
+    setBusy(false);
+    if (!result.ok) {
+      // A stale sign-up token means the code step has to be redone.
+      if (result.code === "OTP_EXPIRED" || result.code === "FORBIDDEN") {
+        setStep("phone");
+        setOtp("");
+        setFieldError("Your session timed out. Send a new code to continue.");
+        return;
+      }
+      fail(result);
+      return;
+    }
+    done();
   };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!db) return;
+    if (session === undefined || busy) return;
     setSubmitted(true);
+    setFieldError("");
 
     if (step === "phone") {
       if (!errors.phone) sendCode();
     } else if (step === "otp") {
-      if (!verifyOtp(otp)) {
-        setOtpError("That code isn't right. Check the text and try again.");
-        return;
-      }
-      const existing = userByPhone(db, phone);
-      if (existing) {
-        logIn(existing.id);
-        done();
-      } else {
-        setSubmitted(false);
-        setStep("details");
-      }
+      if (otp.length === 6) verify();
+      else setFieldError("Enter the 6-digit code from the text.");
     } else if (!errors.name && !errors.city && !errors.terms) {
-      registerUser({ name, phone, city: city as City });
-      done();
+      register();
     }
   };
 
@@ -125,8 +176,11 @@ export function AuthFlow() {
             maxLength={10}
             autoFocus
             value={phone}
-            onChange={(event) => setPhone(event.target.value.replace(/\D/g, ""))}
-            error={show(errors.phone)}
+            onChange={(event) => {
+              setPhone(event.target.value.replace(/\D/g, ""));
+              setFieldError("");
+            }}
+            error={show(errors.phone) ?? (fieldError || undefined)}
           />
         )}
 
@@ -141,9 +195,9 @@ export function AuthFlow() {
             value={otp}
             onChange={(event) => {
               setOtp(event.target.value.replace(/\D/g, ""));
-              setOtpError("");
+              setFieldError("");
             }}
-            error={otpError || undefined}
+            error={fieldError || undefined}
             className="text-center font-mono text-2xl tracking-[0.5em]"
           />
         )}
@@ -156,7 +210,7 @@ export function AuthFlow() {
               autoFocus
               value={name}
               onChange={(event) => setName(event.target.value)}
-              error={show(errors.name)}
+              error={show(errors.name) ?? (fieldError || undefined)}
             />
             <SelectMenu
               variant="field"
@@ -176,7 +230,7 @@ export function AuthFlow() {
           </>
         )}
 
-        <Button type="submit" loading={busy} disabled={!db} className="w-full">
+        <Button type="submit" loading={busy} disabled={session === undefined} className="w-full">
           {step === "phone" ? "Send code" : step === "otp" ? "Verify" : "Create account"}
         </Button>
       </form>
@@ -191,20 +245,12 @@ export function AuthFlow() {
           <Button variant="secondary" disabled className="w-full">
             Continue with Google (coming soon)
           </Button>
-          <div className="mt-6 rounded-2xl bg-brand-600/8 p-3 text-center text-xs text-soft">
-            <p>
-              Prototype: no SMS is sent, the code is always{" "}
-              <span className="font-mono font-semibold">{DEMO_OTP}</span>. A new number creates a
-              fresh account.
+          {USES_EMULATOR && (
+            <p className="mt-6 rounded-2xl bg-brand-600/8 p-3 text-center text-xs text-soft">
+              Development: no SMS is sent. The Firebase emulator keeps the code and it shows up
+              here as a notice. A new number creates a fresh account.
             </p>
-            <button
-              type="button"
-              onClick={() => setPhone(DEMO_PHONE)}
-              className="min-h-11 font-semibold text-brand-700 hover:underline"
-            >
-              Use the demo account (Aarav, with friends and plans)
-            </button>
-          </div>
+          )}
         </>
       )}
 
@@ -219,13 +265,17 @@ export function AuthFlow() {
           </button>
           <button
             type="button"
-            onClick={() => setStep("phone")}
+            onClick={() => {
+              setFieldError("");
+              setStep("phone");
+            }}
             className="min-h-11 text-brand-700 hover:underline"
           >
             Change number
           </button>
         </p>
       )}
+      <div id={RECAPTCHA_ID} />
     </div>
   );
 }

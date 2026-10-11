@@ -1,0 +1,217 @@
+"use client";
+
+// The wizard's form model: what is edited, how it is validated per step and
+// how it becomes an ActivityInput. The step screens are in HostWizardStepViews.
+import type { ActivityInput } from "@/api";
+import { COVER_PRESETS } from "@/lib/activity";
+import { paiseToRupees, rupeesToPaise } from "@/lib/format";
+import { DAY_MS, now } from "@/lib/time";
+import type {
+  Activity,
+  Category,
+  City,
+  Setting,
+  Visibility,
+  WaitlistMode,
+} from "@/lib/types";
+
+// Versioned: drafts saved before the map/duration change would not load.
+export const DRAFT_KEY = "noknok.draft.activity.v5";
+export const STEPS = [
+  "Basics",
+  "Category & photo",
+  "When & where",
+  "Price & spots",
+  "Who can join",
+  "Preview",
+];
+export const LAST_STEP = STEPS.length - 1;
+export const STEP_BASICS = 0;
+export const STEP_CATEGORY = 1;
+export const STEP_WHEN_WHERE = 2;
+export const STEP_PRICE = 3;
+export const STEP_WHO = 4;
+
+export const DURATION_OPTIONS = [
+  { value: "60", label: "1 hour" },
+  { value: "90", label: "1½ hours" },
+  { value: "120", label: "2 hours" },
+  { value: "180", label: "3 hours" },
+  { value: "240", label: "4 hours" },
+  { value: "360", label: "6 hours" },
+  { value: "720", label: "Half a day" },
+  { value: "1440", label: "All day" },
+];
+
+// Everything is kept as strings while editing; converted on publish. Price is
+// whole rupees here and becomes paise in toInput().
+export interface Form {
+  title: string;
+  description: string;
+  category: Category | "";
+  subcategory: string;
+  coverUrl: string;
+  // Set once the host has confirmed or changed the guessed category, so a
+  // later edit to the title doesn't silently overwrite their choice.
+  categoryConfirmed: boolean;
+  start: string; // "YYYY-MM-DDTHH:MM" local
+  durationMinutes: string;
+  venueName: string;
+  address: string;
+  city: City | "";
+  area: string; // locality within the city
+  lat?: number;
+  lng?: number;
+  setting: Setting;
+  beginnerFriendly: boolean;
+  price: string;
+  capacity: string;
+  refundCutoffHours: string;
+  waitlistMode: WaitlistMode;
+  visibility: Visibility;
+  rules: string; // one per line
+}
+
+export type FormErrors = Partial<Record<keyof Form, string>>;
+
+// Date -> "2026-10-04T19:00" in local time.
+export function toLocalInput(ms: number): string {
+  const date = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}
+
+export function blankForm(city: City): Form {
+  const start = new Date(now() + DAY_MS);
+  start.setHours(19, 0, 0, 0);
+  return {
+    title: "",
+    description: "",
+    category: "",
+    subcategory: "",
+    coverUrl: COVER_PRESETS[0].url,
+    categoryConfirmed: false,
+    start: toLocalInput(start.getTime()),
+    durationMinutes: "120",
+    venueName: "",
+    address: "",
+    city,
+    area: "",
+    setting: "indoor",
+    beginnerFriendly: true,
+    price: "0",
+    capacity: "10",
+    refundCutoffHours: "24",
+    waitlistMode: "auto",
+    visibility: "open",
+    rules: "",
+  };
+}
+
+function nearestDuration(minutes: number): string {
+  const options = DURATION_OPTIONS.map((o) => Number(o.value));
+  const best = options.reduce((a, b) => (Math.abs(b - minutes) < Math.abs(a - minutes) ? b : a));
+  return String(best);
+}
+
+export function formFrom(activity: Activity): Form {
+  const start = Date.parse(activity.startsAt);
+  const minutes = Math.round((Date.parse(activity.endsAt) - start) / 60_000);
+  return {
+    title: activity.title,
+    description: activity.description,
+    category: activity.category,
+    subcategory: activity.subcategory,
+    coverUrl: activity.coverUrl ?? COVER_PRESETS[0].url,
+    categoryConfirmed: true,
+    start: toLocalInput(start),
+    durationMinutes: nearestDuration(minutes),
+    venueName: activity.venueName,
+    address: activity.address,
+    city: activity.city,
+    area: activity.area ?? "",
+    lat: activity.lat,
+    lng: activity.lng,
+    setting: activity.setting,
+    beginnerFriendly: activity.beginnerFriendly,
+    price: String(paiseToRupees(activity.priceP)),
+    capacity: String(activity.capacity),
+    refundCutoffHours: String(activity.refundCutoffHours),
+    waitlistMode: activity.waitlistMode,
+    visibility: activity.visibility,
+    rules: activity.tags.join("\n"),
+  };
+}
+
+export function loadDraft(): Partial<Form> {
+  try {
+    return JSON.parse(window.localStorage.getItem(DRAFT_KEY) ?? "{}") as Partial<Form>;
+  } catch {
+    return {};
+  }
+}
+
+export function validate(step: number, form: Form, minCapacity: number): FormErrors {
+  const errors: FormErrors = {};
+  if (step === STEP_BASICS) {
+    if (form.title.trim().length < 4) errors.title = "Give it a title of at least 4 characters";
+    if (form.description.trim().length < 20) {
+      errors.description = "Describe it in at least 20 characters so people know what to expect";
+    }
+  } else if (step === STEP_CATEGORY) {
+    if (!form.category) errors.category = "Pick a category";
+    if (form.category && !form.subcategory) errors.subcategory = "Pick a subcategory";
+  } else if (step === STEP_WHEN_WHERE) {
+    const start = Date.parse(form.start);
+    if (Number.isNaN(start)) errors.start = "Pick a date and time";
+    else if (start < now()) errors.start = "The start must be in the future";
+    if (!form.venueName.trim()) errors.venueName = "Name the place, or pick it on the map";
+    if (!form.address.trim()) errors.address = "Add an address people can navigate to";
+    if (!form.city) errors.city = "NokNok is only in Ulhasnagar, Ambernath, Vitthalwadi and Kalyan for now";
+  } else if (step === STEP_PRICE) {
+    const price = Number(form.price);
+    const capacity = Number(form.capacity);
+    if (form.price === "" || !Number.isInteger(price) || price < 0) {
+      errors.price = "Enter a whole number of rupees, or 0 for free";
+    }
+    if (!Number.isInteger(capacity) || capacity < 1) errors.capacity = "Enter at least 1 spot";
+    else if (capacity < minCapacity) {
+      errors.capacity = `${minCapacity} people have already joined, so it can't be lower`;
+    }
+  }
+  return errors;
+}
+
+export function toInput(form: Form): ActivityInput {
+  const start = new Date(form.start);
+  const end = new Date(start.getTime() + Number(form.durationMinutes) * 60_000);
+  return {
+    title: form.title.trim(),
+    category: form.category as Category,
+    subcategory: form.subcategory,
+    description: form.description.trim(),
+    coverUrl: form.coverUrl,
+    venueName: form.venueName.trim(),
+    address: form.address.trim(),
+    city: form.city as City,
+    area: form.area || undefined,
+    lat: form.lat,
+    lng: form.lng,
+    startsAt: start.toISOString(),
+    endsAt: end.toISOString(),
+    priceP: rupeesToPaise(Number(form.price)), // what a joiner pays
+    capacity: Number(form.capacity),
+    visibility: form.visibility,
+    setting: form.setting,
+    beginnerFriendly: form.beginnerFriendly,
+    tags: form.rules
+      .split("\n")
+      .map((rule) => rule.trim())
+      .filter(Boolean),
+    waitlistMode: form.waitlistMode,
+    refundCutoffHours: Number(form.refundCutoffHours),
+  };
+}
+
