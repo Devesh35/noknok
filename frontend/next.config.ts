@@ -55,6 +55,14 @@ const nextConfig: NextConfig = {
   // /_next/image optimizer would be an unused public endpoint with its own
   // CVE history (GHSA-2464-fhr4-w9xw). Off.
   images: { unoptimized: true },
+  // Next externalises firebase-admin by default, so at runtime Node loads it
+  // from node_modules with plain require(). firebase-admin 14 -> jwks-rsa 4
+  // -> jose 6, and jose 6 is ESM-only, so that require() throws
+  // ERR_REQUIRE_ESM on any Node without require(esm) (< 22.12), which is what
+  // the deployed Vercel functions hit. Listing it here opts it out of the
+  // externals list so Turbopack bundles the whole chain and jose is inlined
+  // as ESM, independent of the runtime's Node version.
+  transpilePackages: ["firebase-admin"],
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },
