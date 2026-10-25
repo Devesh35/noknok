@@ -103,7 +103,18 @@ function QuickForm({ defaultCity }: { defaultCity: City }) {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitted(true);
-    if (Object.values(errors).some(Boolean) || busy) return;
+    if (Object.values(errors).some(Boolean)) {
+      // After the errors render, bring the top-most one into view.
+      const form = event.currentTarget as HTMLFormElement;
+      requestAnimationFrame(() => {
+        const first = form.querySelector<HTMLElement>('[aria-invalid="true"], [data-field-error]');
+        if (!first) return;
+        first.scrollIntoView({ block: "center", behavior: "smooth" });
+        if (first.matches("input, textarea, select")) first.focus({ preventScroll: true });
+      });
+      return;
+    }
+    if (busy) return;
     setBusy(true);
     const result = await createQuickPlan({
       title,
@@ -160,7 +171,9 @@ function QuickForm({ defaultCity }: { defaultCity: City }) {
             ))}
           </div>
           {show(errors.category) && (
-            <p className="mt-1 animate-rise text-sm text-red-400">{errors.category}</p>
+            <p data-field-error className="mt-1 animate-rise text-sm text-red-400">
+              {errors.category}
+            </p>
           )}
           {category && (
             <div className="mt-3 animate-rise">
@@ -179,7 +192,9 @@ function QuickForm({ defaultCity }: { defaultCity: City }) {
                 ))}
               </div>
               {show(errors.subcategory) && (
-                <p className="mt-1 animate-rise text-sm text-red-400">{errors.subcategory}</p>
+                <p data-field-error className="mt-1 animate-rise text-sm text-red-400">
+                  {errors.subcategory}
+                </p>
               )}
             </div>
           )}
@@ -268,7 +283,9 @@ function QuickForm({ defaultCity }: { defaultCity: City }) {
         </fieldset>
       </div>
 
-      <div className="flex gap-2">
+      {/* Sticky on phones so Post stays reachable; the tab bar is hidden on
+          this route (AppShell). */}
+      <div className="sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex gap-2 rounded-[1.75rem] max-md:glass max-md:p-2 md:static">
         <Button type="button" variant="ghost" onClick={() => router.push("/host")}>
           Cancel
         </Button>

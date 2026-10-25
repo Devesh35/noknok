@@ -9,7 +9,7 @@ import {
   type ConfirmationResult,
 } from "firebase/auth";
 import type { ErrorCode } from "@/lib/errors";
-import { EMULATOR_URL, FIREBASE_PROJECT_ID, firebaseAuth, USES_EMULATOR } from "@/lib/firebase/client";
+import { firebaseAuth } from "@/lib/firebase/client";
 
 export class PhoneAuthError extends Error {
   constructor(
@@ -39,6 +39,7 @@ const MESSAGES: Record<string, [ErrorCode, string]> = {
 function explain(error: unknown): PhoneAuthError {
   if (error instanceof PhoneAuthError) return error;
   const code = error instanceof FirebaseError ? error.code : "";
+  if (process.env.NODE_ENV !== "production") console.error("[phone-auth]", code, error);
   const [errorCode, message] = MESSAGES[code] ?? ["SERVER", "Couldn't sign you in. Try again."];
   return new PhoneAuthError(errorCode, message);
 }
@@ -53,7 +54,13 @@ export async function sendCode(phone: string, containerId: string): Promise<void
   // A fresh verifier per send: the old one may be bound to an element React
   // has since replaced, and a used one can't be reset reliably.
   verifier?.clear();
-  verifier = new RecaptchaVerifier(auth, containerId, { size: "invisible" });
+  // The widget refuses to render twice into one element, so each send gets a new child.
+  const host = document.getElementById(containerId);
+  if (!host) throw new PhoneAuthError("SERVER", "Couldn't sign you in. Try again.");
+  host.replaceChildren();
+  const slot = document.createElement("div");
+  host.appendChild(slot);
+  verifier = new RecaptchaVerifier(auth, slot, { size: "invisible" });
   try {
     confirmation = await signInWithPhoneNumber(auth, `+91${phone}`, verifier);
   } catch (error) {
@@ -81,19 +88,5 @@ export async function forgetFirebaseSignIn(): Promise<void> {
     await signOut(firebaseAuth());
   } catch {
     // Nothing to sign out of.
-  }
-}
-
-// Development only: the emulator doesn't text anyone, it keeps the codes.
-// Reads the newest one for this number so the login screen can show it.
-export async function emulatorCodeFor(phone: string): Promise<string | null> {
-  if (!USES_EMULATOR) return null;
-  try {
-    const response = await fetch(`${EMULATOR_URL}/emulator/v1/projects/${FIREBASE_PROJECT_ID}/verificationCodes`);
-    const body = (await response.json()) as { verificationCodes?: { phoneNumber: string; code: string }[] };
-    const mine = (body.verificationCodes ?? []).filter((c) => c.phoneNumber === `+91${phone}`);
-    return mine.at(-1)?.code ?? null;
-  } catch {
-    return null;
   }
 }

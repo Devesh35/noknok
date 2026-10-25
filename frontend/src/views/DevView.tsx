@@ -9,6 +9,7 @@ import {
   endActivityNow,
   logOut,
   resetDemo,
+  seedTestEvents,
   updateDev,
   useDev,
   useSession,
@@ -61,6 +62,7 @@ export function DevView() {
   if (error) {
     return (
       <EmptyState
+        page
         emoji="🛠️"
         title="Developer tools aren't available"
         body={error.message}
@@ -223,6 +225,24 @@ export function DevView() {
           checked={dev.failNextPayment}
           onChange={(failNextPayment) => run(updateDev({ failNextPayment }))}
         />
+      </section>
+
+      <section className={CARD}>
+        <h2 className={HEADING}>Test events</h2>
+        <p className="text-sm text-soft">
+          Adds three test hosts and sixteen upcoming events across all cities: free and paid, open and
+          friends-only, empty and nearly full. Running it again only adds what is missing.
+        </p>
+        <Button
+          variant="secondary"
+          onClick={async () => {
+            const result = await seedTestEvents();
+            if (!result.ok) toast(result.message);
+            else toast(result.data.events > 0 ? `Added ${result.data.events} events` : "Already added");
+          }}
+        >
+          Add test events
+        </Button>
       </section>
 
       <section className={CARD}>

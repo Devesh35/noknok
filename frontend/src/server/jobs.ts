@@ -73,11 +73,15 @@ export async function tick(): Promise<void> {
       ReviewModel.find({ activityId: { $in: ids } }).select("activityId userId").lean(),
     ]);
     const reviewed = new Set(reviews.map((r) => `${r.userId}:${r.activityId}`));
+    // Once a host checked anyone in, only checked-in people may rate
+    // (addReview); don't prompt the others into a FORBIDDEN.
+    const checkedInAt = new Set(joins.filter((j) => j.checkedInAt).map((j) => j.activityId));
     const byId = new Map(ended.map((a) => [a._id, a]));
     for (const join of joins) {
       const activity = byId.get(join.activityId);
       if (!activity || activity.hostId === join.userId) continue;
       if (reviewed.has(`${join.userId}:${join.activityId}`)) continue;
+      if (checkedInAt.has(join.activityId) && !join.checkedInAt) continue;
       await notify(
         join.userId,
         "review",

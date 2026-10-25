@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useDeferredValue, useState } from "react";
 import {
   acceptFriendRequest,
@@ -9,7 +10,7 @@ import {
   type ErrorCode,
   type Result,
 } from "@/api";
-import { Button } from "@/components/Button";
+import { Button, buttonClass } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/Skeleton";
@@ -65,9 +66,12 @@ export function FriendAction({
   if (viewer?.id === other.id) return null;
   if (!viewer) {
     return (
-      <Button onClick={() => toast("Log in to add friends")} className="shrink-0">
+      <Link
+        href={`/login?next=/u/${other.handle}`}
+        className={buttonClass("primary", "shrink-0")}
+      >
         Add friend
-      </Button>
+      </Link>
     );
   }
   if (relationship.kind === "none") {
@@ -215,7 +219,7 @@ export function FriendsPanel({
   const friendList =
     friends.length === 0 ? (
       <EmptyState
-        emoji="🫂"
+        emoji="🤝"
         title={isOwn ? "No friends yet" : `${user.name.split(" ")[0]} has no friends here yet`}
         body={isOwn ? "Find people you know to see their friends-only plans." : undefined}
         action={isOwn && <Button onClick={() => setTab("find")}>Find people</Button>}

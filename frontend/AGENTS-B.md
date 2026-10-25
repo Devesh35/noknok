@@ -56,7 +56,8 @@ wish, so if you add a rule here, add its check too.
    `PAYMENT_REQUIRED`, `CONFLICT` …); responses are `{ code, message }`. The
    frontend branches on `code`, never on `message`. Throwing is for faults.
 10. **Shape change = Mongoose schema change + backfill script in the same PR**
-    (`scripts/migrate/<date>.mts`, dry run by default, `--apply` to write), plus the schema shown in the plan doc
+    (`scripts/migrate/<date>.mts`, dry run by default, `--apply --target=<db>` to write; delete the script once it
+    has run everywhere), plus the schema shown in the plan doc
     (`CLAUDE.md`). No read-time migration, no "handle both shapes".
     → schemas use `strict: "throw"`; an unknown field fails the write
 11. **Money is an integer in paise** (`*P` fields). Dates are BSON dates,
@@ -65,7 +66,7 @@ wish, so if you add a rule here, add its check too.
 12. **Soft delete only** for anything referenced (`deleted_at`). Hard deletes
     are forbidden outside migrations and the account-deletion job.
 13. **Never log a secret, phone number or OTP.** `src/server/log.ts` redacts.
-    The Firebase service-account JSON, Razorpay and PhonePe secrets, the Google
+    The Firebase service-account JSON, Razorpay secrets, the Google
     Maps server key, the Atlas connection string, the job secret and the
     signup-token secret exist only in Vercel env, never in the repo.
     → `.env*` is git-ignored
@@ -128,8 +129,8 @@ A file over ~500 lines is split by subject and keeps its domain name:
 - Every capacity path has a concurrency test: N parallel joins against
   capacity M never produce more than M `going` joins.
 - Every webhook handler has a duplicate-delivery test and an out-of-order test.
-- `npm test` runs Vitest inside `firebase emulators:exec`, so auth tests hit a
-  real Firebase Auth emulator (`npm run test:unit` skips them). Gateways run
-  against a stubbed `fetch` (`src/server/payments.test.ts`).
+- `npm test` runs Vitest on `mongodb-memory-server`. The Firebase ID-token
+  exchange is not unit-tested (it needs the real project); the signup token
+  is. Gateways run against a stubbed `fetch` (`src/server/payments.test.ts`).
 - Every money path has a test that asserts the sum of ticket, fee, host share
   and refund in paise.

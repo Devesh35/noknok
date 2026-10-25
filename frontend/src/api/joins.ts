@@ -57,6 +57,15 @@ export async function approveWaitlist(joinId: string): Promise<Result<{ approved
   return result;
 }
 
+// Host takes someone off the plan; they're refunded in full.
+export async function removeAttendee(activityId: string, userId: string): Promise<Result<null>> {
+  const result = await safe<null>(
+    apiFetch(`/activities/${activityId}/attendees/${userId}`, { method: "DELETE" }),
+  );
+  if (result.ok) await invalidateAll();
+  return result;
+}
+
 // Host "scans" a ticket by entering its id.
 export async function checkIn(
   activityId: string,

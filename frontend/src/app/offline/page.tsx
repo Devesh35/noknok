@@ -7,6 +7,7 @@ export const metadata: Metadata = { title: "Offline" };
 export default function OfflinePage() {
   return (
     <EmptyState
+        page
       emoji="📡"
       title="You're offline"
       body="NokNok needs a connection to load this page. Check your network and try again."

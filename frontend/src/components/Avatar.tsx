@@ -15,6 +15,7 @@ const SIZES = {
   sm: "h-6 w-6 text-[10px]",
   md: "h-10 w-10 text-sm",
   lg: "h-20 w-20 text-2xl",
+  xl: "h-24 w-24 text-3xl md:h-28 md:w-28 md:text-4xl",
 };
 
 function initials(name: string): string {
@@ -51,7 +52,7 @@ export function AvatarStack({ users, max = 5 }: { users: User[]; max?: number })
   const shown = users.slice(0, max);
   const extra = users.length - shown.length;
   return (
-    <div className="flex items-center -space-x-2">
+    <div className="flex items-center -space-x-1.5">
       {shown.map((user) => (
         <Avatar key={user.id} user={user} />
       ))}

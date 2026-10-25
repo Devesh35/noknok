@@ -93,6 +93,7 @@ const eslintConfig = defineConfig([
       "src/lib/maps/provider.ts",
       "src/proxy.ts",
       "src/components/AppShell.tsx",
+      "src/lib/env.ts",
       "src/**/*.test.ts",
     ],
     rules: { "no-restricted-properties": "off" },
@@ -104,6 +105,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Raw credentials and console boilerplate, gitignored.
+    "keys/**",
   ]),
 ]);
 

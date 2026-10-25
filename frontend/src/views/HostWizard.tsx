@@ -22,10 +22,11 @@ import { toast } from "@/lib/toast";
 import type { Activity, Category, DevSettings, User } from "@/lib/types";
 import {
   blankForm,
-  DRAFT_KEY,
+  draftKeys,
   formFrom,
   LAST_STEP,
   loadDraft,
+  loadDraftStep,
   STEP_BASICS,
   STEP_CATEGORY,
   STEP_PRICE,
@@ -54,13 +55,16 @@ function WizardForm({
   editing: Activity | undefined;
 }) {
   const router = useRouter();
+  const draft = draftKeys(host.id);
   const [form, patch] = useReducer(
     (current: Form, change: Partial<Form>) => ({ ...current, ...change }),
     undefined,
     () =>
-      editing ? formFrom(editing) : { ...blankForm(host.city), ...loadDraft() },
+      editing ? formFrom(editing) : { ...blankForm(host.city), ...loadDraft(host.id) },
   );
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(() =>
+    editing ? 0 : loadDraftStep(host.id, { ...blankForm(host.city), ...loadDraft(host.id) }),
+  );
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   // What the server rejected on publish; the steps' own checks catch the rest.
@@ -70,11 +74,21 @@ function WizardForm({
   useEffect(() => {
     if (editing) return;
     try {
-      window.localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+      window.localStorage.setItem(draft.form, JSON.stringify(form));
+      window.localStorage.setItem(draft.step, String(step));
     } catch {
       // Draft autosave is best effort.
     }
-  }, [form, editing]);
+  }, [form, step, editing, draft.form, draft.step]);
+
+  const clearDraft = () => {
+    try {
+      window.localStorage.removeItem(draft.form);
+      window.localStorage.removeItem(draft.step);
+    } catch {
+      // Nothing to clear if storage is unavailable.
+    }
+  };
 
   const minCapacity = editing ? editing.goingCount : 0;
   const errors = attempted ? validate(step, form, minCapacity) : {};
@@ -118,14 +132,14 @@ function WizardForm({
     if (editing) {
       toast("Changes saved");
     } else {
-      window.localStorage.removeItem(DRAFT_KEY);
+      clearDraft();
       toast("Your activity is live 🎉");
     }
     router.replace(`/host/${result.data.id}`);
   };
 
   const discardDraft = () => {
-    window.localStorage.removeItem(DRAFT_KEY);
+    clearDraft();
     patch(blankForm(host.city));
     setStep(0);
     setAttempted(false);
@@ -134,7 +148,7 @@ function WizardForm({
 
   // Leaves the wizard. A new plan's draft is dropped; an edit is just abandoned.
   const cancel = () => {
-    if (!editing) window.localStorage.removeItem(DRAFT_KEY);
+    if (!editing) clearDraft();
     router.push(editing ? `/host/${editing.id}` : "/host");
   };
 
@@ -239,7 +253,9 @@ function WizardForm({
         )}
       </div>
 
-      <div className="mt-4 flex gap-2">
+      {/* Sticky on phones so the actions stay reachable on tall steps; the tab
+          bar is hidden on this route (AppShell). */}
+      <div className="sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 mt-4 flex gap-2 rounded-[1.75rem] max-md:glass max-md:p-2 md:static">
         <Button variant="ghost" onClick={cancel}>
           Cancel
         </Button>
@@ -286,6 +302,7 @@ function WizardSkeleton() {
 function NothingToEdit() {
   return (
     <EmptyState
+        page
       emoji="🕵️"
       title="Nothing to edit here"
       body="This activity doesn't exist, was cancelled, or isn't yours."
@@ -309,6 +326,7 @@ export function HostWizard({ activityId }: { activityId?: string }) {
     const next = activityId ? `/host/${activityId}/edit` : "/host/new";
     return (
       <EmptyState
+        page
         emoji="📣"
         title="Log in to host"
         body="You need an account so people know who's hosting."
@@ -336,6 +354,7 @@ export function HostWizard({ activityId }: { activityId?: string }) {
       }
       return (
         <EmptyState
+        page
           emoji="📡"
           title="Couldn't load this activity"
           body={error.message}

@@ -6,7 +6,7 @@ import { ReportSheet } from "@/components/ReportSheet";
 import { ShareSheet } from "@/components/ShareSheet";
 import { Sheet } from "@/components/Sheet";
 import { PriceRows, TicketCard } from "@/components/Ticket";
-import { formatInr } from "@/lib/format";
+import { formatInr, refundWindow } from "@/lib/format";
 import type {
   Activity,
   FeeModel,
@@ -16,7 +16,7 @@ import type {
 } from "@/lib/types";
 
 export type SheetName =
-  "login" | "checkout" | "success" | "ticket" | "leave" | "share" | "report";
+  "login" | "login-interest" | "checkout" | "success" | "ticket" | "leave" | "share" | "report";
 export type PaymentState = "idle" | "processing" | "failed";
 
 interface PartySheetsProps {
@@ -58,14 +58,34 @@ export function PartySheets({
   isInvite,
 }: PartySheetsProps) {
   const paidP = myJoin ? myJoin.ticketP + myJoin.feeP : 0;
+  const full = activity.goingCount >= activity.capacity;
+  const forInterest = sheet === "login-interest";
+  const nextInLine =
+    activity.waitlistCount > 0
+      ? " Your spot goes to the next person on the waitlist."
+      : "";
 
   return (
     <>
-      <Sheet open={sheet === "login"} onClose={onClose} title="Log in to join">
+      <Sheet
+        open={sheet === "login" || forInterest}
+        onClose={onClose}
+        title={
+          forInterest
+            ? "Log in to save this plan"
+            : full
+              ? "Log in to join the waitlist"
+              : "Log in to join"
+        }
+      >
         <p className="text-sm text-soft">
-          You need an account to join{" "}
-          <span className="font-semibold">{activity.title}</span>. It takes less
-          than a minute.
+          {forInterest
+            ? "You need an account to mark "
+            : full
+              ? "You need an account to join the waitlist for "
+              : "You need an account to join "}
+          <span className="font-semibold">{activity.title}</span>
+          {forInterest ? " as interested" : ""}. It takes less than a minute.
         </p>
         <div className="mt-5 flex flex-col gap-2">
           <Link
@@ -95,6 +115,17 @@ export function PartySheets({
             taken. Try again, or use a different payment method.
           </p>
         )}
+        {refundable ? (
+          <p className="mt-3 text-sm text-muted">
+            Full refund if you leave{" "}
+            {refundWindow(activity.refundCutoffHours)}.
+          </p>
+        ) : (
+          <p className="mt-3 rounded-2xl border border-warning/25 bg-warning/15 p-3 text-sm font-semibold text-warning">
+            This is inside the no-refund window: leaving later won&apos;t refund
+            you.
+          </p>
+        )}
         <div className="mt-5 flex flex-col gap-2">
           <Button onClick={onPay} loading={payment === "processing"}>
             {payment === "processing"
@@ -108,9 +139,6 @@ export function PartySheets({
           </Button>
         </div>
         <p className="mt-3 text-xs text-muted">
-          {refundable
-            ? `Full refund if you leave ${activity.refundCutoffHours}+ hours before the start.`
-            : "This is inside the no-refund window: leaving later won't refund you."}{" "}
           NokNok holds the money and pays the host after the activity.
         </p>
       </Sheet>
@@ -165,9 +193,9 @@ export function PartySheets({
       >
         <p className="text-sm text-soft">
           {paidP === 0
-            ? "Your spot goes to the next person on the waitlist."
+            ? `You can join again later if there's still room.${nextInLine}`
             : refundable
-              ? `You'll get ${formatInr(paidP)} back. Your spot goes to the next person on the waitlist.`
+              ? `You'll get ${formatInr(paidP)} back.${nextInLine}`
               : `The free-cancellation window closed ${activity.refundCutoffHours} hours before the start, so there is no refund for your ${formatInr(paidP)}.`}
         </p>
         <div className="mt-5 flex flex-col gap-2">

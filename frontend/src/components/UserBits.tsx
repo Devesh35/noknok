@@ -1,19 +1,26 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Avatar } from "@/components/Avatar";
+import { CheckIcon, PhoneIcon } from "@/components/icons";
 import type { User } from "@/lib/types";
 
 // Static trust badges: "phone verified" and "ID verified".
 export function VerifiedBadges({ user }: { user: Pick<User, "phoneVerified" | "idVerified"> }) {
   if (!user.phoneVerified && !user.idVerified) return null;
   const badge =
-    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap";
+    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-semibold whitespace-nowrap";
   return (
     <span className="inline-flex flex-wrap gap-1">
       {user.phoneVerified && (
-        <span className={`${badge} bg-success/15 text-success`}>✓ Phone</span>
+        <span className={`${badge} bg-success/15 text-success`}>
+          <PhoneIcon className="h-3.5 w-3.5" />
+          Phone
+        </span>
       )}
-      {user.idVerified && <span className={`${badge} bg-accent/15 text-accent`}>✓ ID</span>}
+      {user.idVerified && <span className={`${badge} bg-accent/15 text-accent`}>
+          <CheckIcon className="h-3.5 w-3.5" />
+          ID
+        </span>}
     </span>
   );
 }

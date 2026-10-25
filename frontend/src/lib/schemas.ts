@@ -9,6 +9,15 @@ const city = z.enum(CITIES);
 const category = z.enum(CATEGORIES_LIST);
 const isoDate = z.iso.datetime({ offset: true });
 
+// The subcategory must belong to the chosen category.
+const subcategoryFits: [
+  (a: { category: z.infer<typeof category>; subcategory: string }) => boolean,
+  { message: string; path: string[] },
+] = [
+  (a) => SUBCATEGORIES[a.category].some((s) => s.value === a.subcategory),
+  { message: "Pick a subcategory", path: ["subcategory"] },
+];
+
 // The Firebase ID token the browser got after entering the SMS code.
 export const firebaseExchangeInput = z.object({ idToken: z.string().min(20).max(8192) });
 
@@ -21,14 +30,12 @@ export const registerInput = z.object({
 });
 export type RegisterInput = z.infer<typeof registerInput>;
 
+export const HANDLE_PATTERN = /^[a-z0-9_]{3,20}$/;
+
 export const profilePatch = z
   .object({
     name: z.string().trim().min(1).max(60),
-    handle: z
-      .string()
-      .trim()
-      .toLowerCase()
-      .regex(/^[a-z0-9_]{3,20}$/, "3-20 letters, numbers or _"),
+    handle: z.string().trim().toLowerCase().regex(HANDLE_PATTERN, "3-20 letters, numbers or _"),
     bio: z.string().trim().max(200),
     city,
     avatarUrl: z.url().optional(),
@@ -72,22 +79,25 @@ export const activityInput = z
     waitlistMode: z.enum(["auto", "approval"]),
     refundCutoffHours: z.number().int().min(0).max(24 * 14),
   })
-  .refine((a) => SUBCATEGORIES[a.category].some((s) => s.value === a.subcategory), {
-    message: "Pick a subcategory",
-    path: ["subcategory"],
+  .refine(...subcategoryFits)
+  .refine((a) => Date.parse(a.endsAt) > Date.parse(a.startsAt), {
+    message: "It has to end after it starts",
+    path: ["endsAt"],
   });
 export type ActivityInput = z.infer<typeof activityInput>;
 
-export const quickPlanInput = z.object({
-  title: z.string().trim().min(3).max(80),
-  category,
-  subcategory: z.string(),
-  startsAt: isoDate,
-  venueName: z.string().trim().min(1).max(80),
-  city,
-  area: z.string().trim().max(40).optional(), // suburb, e.g. "Andheri"
-  need: z.number().int().min(1).max(50), // how many more people the host wants
-});
+export const quickPlanInput = z
+  .object({
+    title: z.string().trim().min(3).max(80),
+    category,
+    subcategory: z.string(),
+    startsAt: isoDate,
+    venueName: z.string().trim().min(1).max(80),
+    city,
+    area: z.string().trim().max(40).optional(), // suburb, e.g. "Andheri"
+    need: z.number().int().min(1).max(50), // how many more people the host wants
+  })
+  .refine(...subcategoryFits);
 export type QuickPlanInput = z.infer<typeof quickPlanInput>;
 
 export const activityListQuery = z.object({

@@ -14,6 +14,18 @@ const timeFormat = new Intl.DateTimeFormat("en-IN", {
 
 const relativeFormat = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
+// "1 spot", "3 spots". Irregular plurals pass their own form.
+export function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+// Refund window in words; a 0-hour cutoff means "until it starts".
+export function refundWindow(cutoffHours: number): string {
+  return cutoffHours <= 0
+    ? "any time before it starts"
+    : `up to ${plural(cutoffHours, "hour")} before the start`;
+}
+
 // Money arrives as integer paise and is turned into rupees only here.
 export function formatInr(amountP: number): string {
   const rupees = amountP / 100;

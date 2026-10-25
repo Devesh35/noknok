@@ -13,8 +13,8 @@ const PUBLIC_NAMES = [
   "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
   "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
   "NEXT_PUBLIC_FIREBASE_APP_ID",
-  "NEXT_PUBLIC_FIREBASE_USE_EMULATOR",
   "NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY",
+  "NEXT_PUBLIC_FIREBASE_TEST_MODE",
   "NEXT_PUBLIC_MAP_PROVIDER",
   "NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY",
   "NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID",
@@ -36,7 +36,6 @@ const optional = z.string().trim().min(1).optional();
 const publicSchema = z.object({
   NEXT_PUBLIC_FIREBASE_API_KEY: optional,
   NEXT_PUBLIC_FIREBASE_PROJECT_ID: optional,
-  NEXT_PUBLIC_FIREBASE_USE_EMULATOR: z.enum(["0", "1"]).optional(),
   NEXT_PUBLIC_MAP_PROVIDER: z.enum(["osm", "google"]).default("osm"),
 });
 
@@ -47,24 +46,25 @@ const secretSchema = z.object({
   SESSION_COOKIE: z.string().default("nn_session"),
   APP_URL: z.url().default("http://localhost:3000"),
   JOB_SECRET: optional,
+  // Vercel Cron sends this as `Authorization: Bearer`. Vercel sets it from the
+  // project's environment variables.
+  CRON_SECRET: optional,
   SIGNUP_TOKEN_SECRET: optional,
   // Firebase Auth (server). Base64 of the service-account JSON.
   FIREBASE_SERVICE_ACCOUNT_JSON: optional,
   FIREBASE_PROJECT_ID: optional,
-  FIREBASE_AUTH_EMULATOR_HOST: optional,
   // Google Maps Platform (Places + Geocoding). Empty = Nominatim.
   GOOGLE_MAPS_SERVER_KEY: optional,
   // Payments
-  PAYMENT_PROVIDER: z.enum(["fake", "razorpay", "phonepe"]).default("fake"),
+  PAYMENT_PROVIDER: z.enum(["fake", "razorpay"]).default("fake"),
   PAYMENT_ENV: z.enum(["test", "live"]).default("test"),
   RAZORPAY_KEY_ID: optional,
   RAZORPAY_KEY_SECRET: optional,
   RAZORPAY_WEBHOOK_SECRET: optional,
-  PHONEPE_CLIENT_ID: optional,
-  PHONEPE_CLIENT_SECRET: optional,
-  PHONEPE_CLIENT_VERSION: z.string().default("1"),
-  PHONEPE_WEBHOOK_USERNAME: optional,
-  PHONEPE_WEBHOOK_PASSWORD: optional,
+  // The /dev page and /api/dev/* (user switcher, clock, full database wipe).
+  // Exactly "1" or "true"; anything else is off. Development without a
+  // MONGODB_URI (in-memory database) turns it on by itself.
+  DEV_TOOLS: z.enum(["1", "true", "0", "false"]).optional(),
 });
 
 function read<T extends z.ZodObject>(schema: T): z.infer<T> {
@@ -78,29 +78,20 @@ const pub = read(publicSchema);
 const secret = read(secretSchema);
 const isProd = secret.NODE_ENV === "production";
 
-// Same rule the browser applies in src/lib/firebase/client.ts: an explicit
-// flag wins; otherwise the emulator is used outside production when no
-// Firebase project is configured.
-const useAuthEmulator =
-  pub.NEXT_PUBLIC_FIREBASE_USE_EMULATOR !== undefined
-    ? pub.NEXT_PUBLIC_FIREBASE_USE_EMULATOR === "1"
-    : !isProd && !pub.NEXT_PUBLIC_FIREBASE_API_KEY;
-
-// firebase-admin finds the emulator through this variable. `firebase
-// emulators:exec` sets it; `npm run dev` (concurrently) does not.
-const authEmulatorHost = useAuthEmulator ? (secret.FIREBASE_AUTH_EMULATOR_HOST ?? "127.0.0.1:9099") : undefined;
-if (authEmulatorHost) process.env.FIREBASE_AUTH_EMULATOR_HOST = authEmulatorHost;
-
 export const config = {
   ...secret,
   isProd,
+  // Never in production. Outside it, on by default only when the database
+  // is the throwaway in-memory one; a real MONGODB_URI (a shared dev or
+  // staging Atlas cluster) needs DEV_TOOLS=1 to expose the wipe.
+  devTools:
+    !isProd &&
+    (secret.DEV_TOOLS === undefined ? !secret.MONGODB_URI : secret.DEV_TOOLS === "1" || secret.DEV_TOOLS === "true"),
   mapProvider: pub.NEXT_PUBLIC_MAP_PROVIDER,
+  // Phone login always talks to the real Firebase project; without a service
+  // account the login route answers NOT_CONFIGURED.
   firebase: {
-    useEmulator: useAuthEmulator,
-    emulatorHost: authEmulatorHost,
-    // The emulator accepts any "demo-" project id without a real project.
-    projectId:
-      secret.FIREBASE_PROJECT_ID ?? pub.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? (useAuthEmulator ? "demo-noknok" : undefined),
+    projectId: secret.FIREBASE_PROJECT_ID ?? pub.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
     serviceAccountJson: secret.FIREBASE_SERVICE_ACCOUNT_JSON,
   },
   // A random secret in development means signup tokens die with the server,
@@ -113,10 +104,17 @@ export const config = {
 if (isProd && process.env.NEXT_PHASE !== "phase-production-build") {
   const problems = [
     !config.MONGODB_URI && "MONGODB_URI is required",
-    useAuthEmulator && "the Firebase Auth emulator is on (NEXT_PUBLIC_FIREBASE_USE_EMULATOR)",
     !config.FIREBASE_SERVICE_ACCOUNT_JSON && "FIREBASE_SERVICE_ACCOUNT_JSON is required",
     !config.SIGNUP_TOKEN_SECRET && "SIGNUP_TOKEN_SECRET is required",
     config.PAYMENT_PROVIDER === "fake" && "PAYMENT_PROVIDER=fake is not allowed",
+    // Without one of these the job tick rejects every caller: holds never
+    // expire, reminders never go out, missed webhooks are never polled.
+    !config.JOB_SECRET && !config.CRON_SECRET && "JOB_SECRET or CRON_SECRET is required",
+    config.PAYMENT_PROVIDER === "razorpay" &&
+      !(config.RAZORPAY_KEY_ID && config.RAZORPAY_KEY_SECRET) &&
+      "RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required",
+    // Without it every webhook is dropped as unsigned, silently.
+    config.PAYMENT_PROVIDER === "razorpay" && !config.RAZORPAY_WEBHOOK_SECRET && "RAZORPAY_WEBHOOK_SECRET is required",
   ].filter(Boolean);
   if (problems.length) throw new Error(`Refusing to start in production: ${problems.join("; ")}`);
 }

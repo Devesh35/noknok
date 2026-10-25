@@ -68,8 +68,13 @@ export async function activityDetail(id: string, viewer: UserDoc | null): Promis
     ...(invite?.refId ? [invite.refId] : []),
   ]);
   const inviter = invite?.refId ? users.get(invite.refId) : undefined;
+  // A deleted host's cancelled plan still opens, so attendees can read the
+  // cancellation and refund notice; their name and profile stay hidden.
   const host = users.get(activity.hostId);
-  if (!host) fail("NOT_FOUND", "This plan no longer exists");
+  if (!host && activity.status !== "cancelled") fail("NOT_FOUND", "This plan no longer exists");
+  const hostUser = host
+    ? toUser(host)
+    : { id: activity.hostId, handle: "", name: "Former host", city: activity.city, bio: "", interests: [], phoneVerified: false, idVerified: false };
   const pick = (ids: string[]) =>
     ids.map((uid) => users.get(uid)).filter((u): u is UserDoc => u !== undefined).map(toUser);
 
@@ -79,7 +84,7 @@ export async function activityDetail(id: string, viewer: UserDoc | null): Promis
       locked: !canViewIt,
       includeInviteToken: viewerId === activity.hostId,
     }),
-    host: toUser(host),
+    host: hostUser,
     hostStats,
     attendees: canViewIt ? pick(goingIds) : [],
     breakdown: breakdownForPrice(activity.priceP, dev.feeModel, dev.feePercent),

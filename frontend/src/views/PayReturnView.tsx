@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { verifyPayment } from "@/api";
 import { buttonClass } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
-import { merchantOrderIdFrom } from "@/lib/payments/phonepe";
+import { merchantOrderIdFrom } from "@/lib/payments/return";
 import { toast } from "@/lib/toast";
 
 const POLL_MS = 3000;
@@ -84,6 +84,7 @@ export function PayReturnView() {
     case "slow":
       return (
         <EmptyState
+        page
           emoji="⏳"
           title="Still confirming your payment"
           body="Your spot is held and we'll notify you as soon as the bank confirms. You don't need to pay again."
@@ -97,6 +98,7 @@ export function PayReturnView() {
     case "failed":
       return (
         <EmptyState
+        page
           emoji="⚠️"
           title="The payment didn't go through"
           body="If money left your account it will be refunded automatically, usually within 5–7 working days."
@@ -110,6 +112,7 @@ export function PayReturnView() {
     case "login":
       return (
         <EmptyState
+        page
           emoji="🔐"
           title="Log in to finish"
           body="Log in with the same number you joined with and we'll confirm your payment."
@@ -123,6 +126,7 @@ export function PayReturnView() {
     case "bad_link":
       return (
         <EmptyState
+        page
           emoji="🔗"
           title="This link doesn't look right"
           body="If you just paid, your ticket will show up under Profile › Joined once the payment is confirmed."

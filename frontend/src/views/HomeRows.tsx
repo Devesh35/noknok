@@ -46,6 +46,7 @@ function Cards({
             attendees={item.attendees}
             friends={item.friends}
             locked={item.locked}
+            mine={item.myJoin?.status === "going"}
             scope={scope}
             className={row ? "w-80 shrink-0 snap-start md:w-96" : ""}
           />
@@ -147,33 +148,40 @@ export function HomeSections({
   const today = open.filter((item) =>
     isSameDay(new Date(item.activity.startsAt), new Date(now())),
   );
+  // Each plan shows in at most one curated row, in the order the rows appear;
+  // "Plans in <city>" below stays complete.
+  const used = new Set<string>();
+  const take = (pick: (item: ActivityCardItem) => boolean) => {
+    const row = open
+      .filter((item) => !used.has(item.activity.id) && pick(item))
+      .slice(0, ROW_COUNT);
+    for (const item of row) used.add(item.activity.id);
+    return row;
+  };
+  const first =
+    today.length > 0
+      ? { id: "today", title: "Happening today 🔥", items: take((item) => today.includes(item)) }
+      : { id: "soon", title: "Coming up ⚡", items: take(() => true) };
+  // Friends with a ticket; a friend who only hosts isn't "going".
+  const withFriends = take((item) =>
+    item.friends.some((f) => f.id !== item.activity.hostId),
+  );
   const forYou = user
-    ? open
-        .filter(
-          (item) =>
-            item.activity.hostId !== user.id && user.interests.includes(item.activity.category),
-        )
-        .slice(0, ROW_COUNT)
+    ? take(
+        (item) =>
+          item.activity.hostId !== user.id && user.interests.includes(item.activity.category),
+      )
     : [];
-  const withFriends = open.filter((item) => item.friends.length > 0).slice(0, ROW_COUNT);
-  const lookingForPeople = open
-    .filter((item) => {
-      const left = item.activity.capacity - item.activity.goingCount;
-      return left > 0 && (item.activity.quick || left <= FEW_SPOTS);
-    })
-    .slice(0, ROW_COUNT);
-  const weekend = open
-    .filter((item) => isThisWeekend(Date.parse(item.activity.startsAt)))
-    .slice(0, ROW_COUNT);
+  const lookingForPeople = take((item) => {
+    const left = item.activity.capacity - item.activity.goingCount;
+    return left > 0 && (item.activity.quick || left <= FEW_SPOTS);
+  });
+  const weekend = take((item) => isThisWeekend(Date.parse(item.activity.startsAt)));
   const nearby = items;
 
   return (
     <div className="space-y-6">
-      {today.length > 0 ? (
-        <Row id="today" title="Happening today 🔥" items={today.slice(0, ROW_COUNT)} />
-      ) : (
-        <Row id="soon" title="Coming up ⚡" items={open.slice(0, ROW_COUNT)} />
-      )}
+      <Row id={first.id} title={first.title} items={first.items} />
       <Row id="friends" title="Your friends are going" items={withFriends} />
       <Row id="foryou" title="For you ✨" items={forYou} />
       <Row

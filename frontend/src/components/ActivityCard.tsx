@@ -7,7 +7,7 @@ import { CategoryBadge, VisibilityBadge } from "@/components/Badge";
 import { Cover } from "@/components/Cover";
 import { LockIcon } from "@/components/icons";
 import { NAV_FORWARD } from "@/components/PageTransition";
-import { formatDateTime, formatPrice } from "@/lib/format";
+import { formatDateTime, formatPrice, plural } from "@/lib/format";
 import { coverTransitionName, setMorphSource, useIsMorphSource } from "@/lib/morph";
 import type { Activity, User } from "@/lib/types";
 
@@ -26,6 +26,8 @@ interface ActivityCardProps {
   note?: string;
   // Distinguishes cards for the same activity shown in different lists on one page.
   scope?: string;
+  // The viewer holds a ticket: shown as a "You're going" badge.
+  mine?: boolean;
   // Render as a plain block instead of a link (wizard preview).
   preview?: boolean;
   className?: string;
@@ -44,6 +46,7 @@ export function ActivityCard({
   note,
   scope = "list",
   preview = false,
+  mine = false,
   className = "",
 }: ActivityCardProps) {
   const morphKey = `${scope}:${activity.id}`;
@@ -55,18 +58,26 @@ export function ActivityCard({
   const spotsLeft = Math.max(activity.capacity - going, 0);
 
   let people: string;
+  // `friends` includes a host friend, who isn't counted in "going": name them
+  // as the host, and only friends with a ticket as going.
+  const goingFriends = friends.filter((f) => f.id !== activity.hostId);
+  const hostFriend = friends.find((f) => f.id === activity.hostId);
   if (cancelled) people = "Cancelled";
   else if (note) people = note;
-  else if (friends.length > 0) {
-    const others = friends.length - 1;
-    people = `${friends[0].name.split(" ")[0]}${
+  else if (goingFriends.length > 0) {
+    const others = goingFriends.length - 1;
+    people = `${goingFriends[0].name.split(" ")[0]}${
       others > 0 ? ` +${others}` : ""
     } going`;
-  } else if (going === 0) people = "Be the first to join";
+  } else if (hostFriend)
+    people = `Hosted by your friend ${hostFriend.name.split(" ")[0]}${
+      going > 0 ? ` · ${going} going` : ""
+    }`;
+  else if (going === 0) people = "Be the first to join";
   else people = `${going} ${going === 1 ? "person is" : "people are"} going`;
 
   const room =
-    spotsLeft === 0 ? "Full" : spotsLeft <= 3 ? `Needs ${spotsLeft} more` : `${spotsLeft} spots left`;
+    spotsLeft === 0 ? "Full" : spotsLeft <= 3 ? `Needs ${spotsLeft} more` : `${plural(spotsLeft, "spot")} left`;
 
   const frame = (classes: string, children: ReactNode) =>
     preview ? (
@@ -156,6 +167,11 @@ export function ActivityCard({
           <CategoryBadge category={activity.category} subcategory={activity.subcategory} />
           <VisibilityBadge visibility={activity.visibility} />
         </div>
+        {mine && !cancelled && (
+          <span className="absolute top-3 right-3 rounded-full bg-success px-2.5 py-1 text-xs font-bold text-white shadow">
+            You&apos;re going
+          </span>
+        )}
         <span className="absolute right-3 bottom-3 rounded-full bg-surface/85 px-3 py-1.5 text-sm font-bold text-ink shadow backdrop-blur">
           {price}
         </span>
@@ -168,7 +184,7 @@ export function ActivityCard({
         </p>
         <div className="flex items-center gap-2 pt-2">
           {attendees.length > 0 && (
-            <span className="flex shrink-0 -space-x-1.5">
+            <span className="flex shrink-0 -space-x-1">
               {attendees.slice(0, MAX_FACES).map((person) => (
                 <Avatar key={person.id} user={person} size="sm" />
               ))}

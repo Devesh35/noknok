@@ -1,9 +1,12 @@
 import "server-only";
 import { newId } from "@/lib/ids";
-import type { ProfilePatch, RegisterInput, SettingsPatch } from "@/lib/schemas";
+import { HANDLE_PATTERN, type ProfilePatch, type RegisterInput, type SettingsPatch } from "@/lib/schemas";
 import { HOUR_MS } from "@/lib/time";
 import type { Me, PersonResult, SessionDto, User, UserStats } from "@/lib/types";
+import { ApiError } from "@/lib/errors";
 import { friendIds, mutualFriendIds } from "@/lib/visibility";
+import { LIVE_STATUSES } from "@/server/access";
+import { cancelActivityAs } from "@/server/activities";
 import { audit } from "@/server/audit";
 import { endAllSessions, existingAnonKey, startSession } from "@/server/auth";
 import { readSignupToken } from "@/server/auth.signup";
@@ -12,7 +15,8 @@ import { config } from "@/server/config";
 import { connectDb } from "@/server/db";
 import { deleteFirebaseUser } from "@/server/firebase";
 import { toFriendRequest, toMe, toUser } from "@/server/dto";
-import { graphFor } from "@/server/friends";
+import { graphFor, removeFriendship } from "@/server/friends";
+import { leaveActivity, removeFromActivity } from "@/server/joins";
 import {
   ActivityModel,
   FriendRequestModel,
@@ -20,6 +24,7 @@ import {
   JoinModel,
   ReviewModel,
   UserModel,
+  type ActivityDoc,
   type UserDoc,
 } from "@/server/models";
 import { unreadCount } from "@/server/notify";
@@ -27,7 +32,11 @@ import { rateLimit } from "@/server/ratelimit";
 import { fail } from "@/server/respond";
 
 const SEARCH_LIMIT = 6;
-const RESERVED_HANDLES = ["me"];
+// "me" is a route; the rest would let someone pass as staff.
+const RESERVED_HANDLES = [
+  "me", "admin", "administrator", "root", "noknok", "support", "help", "staff", "team",
+  "official", "moderator", "mod", "security", "system", "api", "dev", "settings", "host",
+];
 const REGISTER_LIMIT = 10;
 
 const live = { deletedAt: { $exists: false } };
@@ -53,8 +62,9 @@ export async function userByHandle(handle: string): Promise<UserDoc | null> {
   return UserModel.findOne({ handle: handle.toLowerCase(), ...live }).lean();
 }
 
+// Also true for a handle that isn't valid, so it never reads as available.
 export async function isHandleTaken(handle: string, exceptUserId?: string): Promise<boolean> {
-  if (RESERVED_HANDLES.includes(handle)) return true;
+  if (!HANDLE_PATTERN.test(handle) || RESERVED_HANDLES.includes(handle)) return true;
   await connectDb();
   const other = await UserModel.exists({ handle, _id: { $ne: exceptUserId ?? "" } });
   return other !== null;
@@ -93,7 +103,8 @@ export async function register(input: RegisterInput, ip: string): Promise<Me> {
     fail("CONFLICT", "This number already has an account");
   }
 
-  const base = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "user";
+  // 3-17 characters, so the two-digit suffix still fits the 20-character limit.
+  const base = (input.name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "user").slice(0, 17).padEnd(3, "0");
   let handle = base;
   while (await isHandleTaken(handle)) handle = `${base}${Math.floor(10 + Math.random() * 90)}`;
 
@@ -135,8 +146,10 @@ export async function updateSettings(me: UserDoc, patch: SettingsPatch): Promise
   return toMe(doc);
 }
 
-// Returns whether the user is now blocked.
+// Returns whether the user is now blocked. Blocking also unfriends and takes
+// them off my upcoming plans (refunded in full), so they can't stay in.
 export async function toggleBlock(me: UserDoc, userId: string): Promise<boolean> {
+  await devSettings();
   await connectDb();
   const blocked = me.blockedIds.includes(userId);
   await UserModel.updateOne(
@@ -144,7 +157,16 @@ export async function toggleBlock(me: UserDoc, userId: string): Promise<boolean>
     blocked ? { $pull: { blockedIds: userId } } : { $addToSet: { blockedIds: userId } },
   );
   await audit(me._id, blocked ? "user.unblock" : "user.block", "user", userId);
+  if (!blocked) {
+    await removeFriendship(me, userId);
+    const mine = await upcomingHostedBy(me._id);
+    for (const activity of mine) await removeFromActivity(me._id, activity, userId);
+  }
   return !blocked;
+}
+
+async function upcomingHostedBy(userId: string): Promise<ActivityDoc[]> {
+  return ActivityModel.find({ hostId: userId, status: "active", endsAt: { $gt: new Date(now()) }, ...live }).lean();
 }
 
 export async function blockedUsers(me: UserDoc): Promise<User[]> {
@@ -153,13 +175,26 @@ export async function blockedUsers(me: UserDoc): Promise<User[]> {
   return docs.map(toUser);
 }
 
-// Soft delete: the row stays for joins and reviews to point at; the phone is
-// freed so the person can sign up again, here and in Firebase.
+// Soft delete: the row stays for joins and reviews to point at; the phone and
+// handle are freed so the person can sign up again, here and in Firebase.
+// Their upcoming plans are cancelled (everyone refunded) and their own spots
+// given up first, so nobody is left holding a ticket to a plan that vanished.
 export async function deleteAccount(me: UserDoc): Promise<void> {
+  await devSettings();
   await connectDb();
+  for (const activity of await upcomingHostedBy(me._id)) await cancelActivityAs(me._id, activity);
+  const joins = await JoinModel.find({ userId: me._id, status: { $in: [...LIVE_STATUSES] } }).select("activityId").lean();
+  for (const join of joins) {
+    try {
+      await leaveActivity(me, join.activityId);
+    } catch (error) {
+      // Checked in to something happening now: that spot was used, keep it.
+      if (!(error instanceof ApiError)) throw error;
+    }
+  }
   await UserModel.updateOne(
     { _id: me._id },
-    { $set: { deletedAt: new Date(), phone: `${me.phone}#${Date.now()}` } },
+    { $set: { deletedAt: new Date(), phone: `${me.phone}#${Date.now()}`, handle: me._id.toLowerCase() } },
   );
   await audit(me._id, "user.delete", "user", me._id);
   await endAllSessions(me._id);

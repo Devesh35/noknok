@@ -12,17 +12,31 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { apiFetch, withQuery } from "@/lib/api/client";
+import { apiFetch, setLoggedOutHandler, withQuery } from "@/lib/api/client";
 import type { ApiError } from "@/lib/errors";
 
 let client: QueryClient | null = null;
 
 function getClient(): QueryClient {
-  client ??= new QueryClient({
+  if (client) return client;
+  client = new QueryClient({
     defaultOptions: {
-      queries: { staleTime: 10_000, retry: 1, refetchOnWindowFocus: true },
+      queries: {
+        staleTime: 10_000,
+        refetchOnWindowFocus: true,
+        // One more try for a flaky answer; none for a dead connection or a
+        // hung request (that already waited the client timeout), and none
+        // for an answer that won't change on a retry.
+        retry: (failures, error) => {
+          const code = (error as ApiError).code;
+          return failures < 1 && code !== "NETWORK" && code !== "NOT_LOGGED_IN" && code !== "NOT_FOUND";
+        },
+      },
     },
   });
+  // The session expired under an open tab: refetch /me so the shell flips to
+  // logged out instead of every minute's refresh failing quietly.
+  setLoggedOutHandler(() => void client?.invalidateQueries({ queryKey: ["api", "/me"] }));
   return client;
 }
 

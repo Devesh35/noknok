@@ -37,7 +37,8 @@ async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
 }
 
 interface Component {
-  types: string[];
+  // Places (New) omits `types` on some parts (e.g. a bare neighbourhood name).
+  types?: string[];
   // Places (New) spells it longText; Geocoding spells it long_name.
   longText?: string;
   long_name?: string;
@@ -45,7 +46,7 @@ interface Component {
 
 function pick(components: Component[], ...types: string[]): string {
   for (const type of types) {
-    const found = components.find((c) => c.types.includes(type));
+    const found = components.find((c) => c.types?.includes(type));
     const text = found?.longText ?? found?.long_name;
     if (text) return text;
   }

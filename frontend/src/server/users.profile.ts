@@ -56,7 +56,8 @@ export async function profileFor(handle: string, viewer: UserDoc | null): Promis
   } else {
     profile = await userByHandle(handle);
   }
-  if (!profile) fail("NOT_FOUND", "No one by that handle");
+  // Someone who blocked the viewer is invisible to them.
+  if (!profile || (viewer && profile.blockedIds.includes(viewer._id))) fail("NOT_FOUND", "No one by that handle");
   const isOwn = viewer?._id === profile._id;
   const viewerId = viewer?._id ?? null;
 
@@ -95,7 +96,10 @@ export async function profileFor(handle: string, viewer: UserDoc | null): Promis
     cardsFor(hosted, viewer, { includeInviteToken: isOwn }),
     cardsFor(joinedDocs, viewer),
   ]);
-  const endedIds = new Set([...hosted, ...joinedDocs].filter(isPast).map((a) => a._id));
+  // Cancelled plans are over too, whatever their date.
+  const endedIds = new Set(
+    [...hosted, ...joinedDocs].filter((a) => isPast(a) || a.status === "cancelled").map((a) => a._id),
+  );
   const upcoming = (cards: ActivityCardItem[]) =>
     cards.filter((c) => visible(c) && !endedIds.has(c.activity.id)).sort(upcomingFirst);
   const past = [...hostedCards, ...joinedCards]
@@ -152,9 +156,13 @@ export async function profileFor(handle: string, viewer: UserDoc | null): Promis
       interestedDocs.filter((a) => !isPast(a)),
       viewer,
     ),
+    // Same plans as the Joined list: live tickets to upcoming plans. Cancelled
+    // ones show their refund on the plan; ended ones are under Past.
     tickets: tickets.flatMap((join) => {
       const activity = byId.get(join.activityId);
-      return activity ? [{ join: toJoin(join), activity: toActivity(activity) }] : [];
+      const usable =
+        activity && join.status === "going" && activity.status === "active" && !activity.deletedAt && !isPast(activity);
+      return usable ? [{ join: toJoin(join), activity: toActivity(activity) }] : [];
     }),
     incomingRequests: await requestsWithUsers(incoming, profile._id),
     outgoingRequests: await requestsWithUsers(outgoing, profile._id),

@@ -7,7 +7,7 @@ import {
   leaveActivity,
   payAndJoin,
   PaymentError,
-  toggleInterested,
+  setInterested,
   useActivity,
   useSession,
   type ErrorCode,
@@ -15,10 +15,12 @@ import {
 import { Button } from "@/components/Button";
 import { Cover } from "@/components/Cover";
 import { EmptyState } from "@/components/EmptyState";
-import { ShareIcon } from "@/components/icons";
+import { HeartIcon, ShareIcon } from "@/components/icons";
+import { placeText } from "@/lib/activity";
 import { formatDateTime, formatInr } from "@/lib/format";
 import { coverTransitionName } from "@/lib/morph";
 import { now } from "@/lib/time";
+import { IS_PRODUCTION } from "@/lib/env";
 import { toast } from "@/lib/toast";
 import type { ActivityDetail, SessionDto } from "@/lib/types";
 import {
@@ -66,6 +68,7 @@ export function PartyView({ id }: { id: string }) {
       <ViewTransition key="error" enter="fade-in" default="none">
         <div>
           <EmptyState
+        page
             emoji="📡"
             title="Couldn't load this plan"
             body={error.message}
@@ -153,7 +156,13 @@ function PartyContent({
   const inviter = data.viewer.invite?.inviter;
 
   const interested = data.viewer.interested;
-  const friends = data.viewer.friendsGoing;
+  // The host isn't counted in "going", so never list them as a friend who's in.
+  const friends = data.viewer.friendsGoing.filter(
+    (f) => f.id !== activity.hostId,
+  );
+  const hostFriend = data.viewer.isFriendOfHost
+    ? host.name.split(" ")[0]
+    : null;
   const canBeInterested =
     !cancelled && !past && !isHost && myJoin?.status !== "going";
 
@@ -169,16 +178,16 @@ function PartyContent({
 
   const toggleInterest = async () => {
     if (!viewer) {
-      setSheet("login");
+      setSheet("login-interest");
       return;
     }
-    const result = await toggleInterested(activity.id);
+    const result = await setInterested(activity.id, !interested);
     if (!result.ok) explainFailure(result.code, result.message);
     else
       toast(
         result.data.interested
-          ? "Saved. Find it under Profile › Joined."
-          : "Removed",
+          ? "Saved. Find it under Profile › Liked."
+          : "Removed from your liked plans",
       );
   };
 
@@ -187,7 +196,7 @@ function PartyContent({
     const text = `${viewer?.name ?? "I"} is going to ${activity.title}
 ${formatDateTime(
   activity.startsAt,
-)} · ${activity.venueName}, ${activity.address}
+)} · ${placeText(activity)}
 ${pageUrl}`;
     try {
       if (typeof navigator.share === "function")
@@ -326,7 +335,7 @@ ${pageUrl}`;
       onClick={toggleInterest}
       className={interested ? "text-location" : ""}
     >
-      {interested ? "♥" : "♡"}
+      <HeartIcon filled={interested} className="h-5 w-5" />
     </Button>
   );
   const issueNote = joinIssue && (
@@ -337,7 +346,7 @@ ${pageUrl}`;
 
   return (
     <ViewTransition key="content" enter="fade-in" default="none">
-      <div className="pb-32 lg:px-8 lg:pt-6 lg:pb-12">
+      <div className="pb-32 lg:pb-12">
         {capture}
         <div className="relative">
           <ViewTransition
@@ -348,13 +357,13 @@ ${pageUrl}`;
             <Cover
               activity={activity}
               float
-              className={`h-64 w-full rounded-b-[2rem] shadow-xl shadow-brand-600/15 lg:h-80 lg:rounded-[2rem] ${
-                cancelled ? "grayscale" : ""
-              }`}
+              className={`h-64 w-full lg:h-96 ${cancelled ? "grayscale" : ""}`}
               emojiClassName="text-8xl"
             />
           </ViewTransition>
-          <div className="absolute inset-x-0 top-0 flex justify-between p-3">
+          {/* The photo melts into the page instead of ending on an edge. */}
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-linear-to-b from-transparent to-canvas" />
+          <div className="absolute inset-x-0 top-0 mx-auto flex max-w-[1440px] justify-between p-3 lg:px-8 lg:py-4">
             <BackButton />
             <button
               type="button"
@@ -367,7 +376,7 @@ ${pageUrl}`;
           </div>
         </div>
 
-        <div className="gap-8 px-4 pt-5 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:px-0 lg:pt-6">
+        <div className="mx-auto w-full max-w-[1440px] gap-8 px-4 pt-5 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8 lg:pt-6">
           <div className="stagger space-y-6">
             {cancelled && (
               <div
@@ -417,7 +426,12 @@ ${pageUrl}`;
               friends={friends}
               spotsLeft={spotsLeft}
               live={!past && !cancelled}
-              waitlistNote={waitlistNote}
+              waitlistNote={
+                state === "full" || (state === "anonymous" && spotsLeft === 0)
+                  ? waitlistNote
+                  : null
+              }
+              hostFriend={hostFriend}
             />
 
             {!isHost && (
@@ -440,7 +454,8 @@ ${pageUrl}`;
               </div>
               {issueNote}
               <p className="text-xs text-muted">
-                {session.paymentProvider === "fake"
+                {session.paymentProvider === "fake" &&
+                !IS_PRODUCTION
                   ? "Prototype: no real payment is taken."
                   : session.paymentEnv === "test"
                     ? "Test mode: use a test card or UPI id, no real money moves."

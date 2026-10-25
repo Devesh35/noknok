@@ -30,6 +30,7 @@ export async function exchangeIdToken(idToken: string, ip: string): Promise<Exch
     decoded = await adminAuth().verifyIdToken(idToken, true);
   } catch (error) {
     if ((error as { code?: string }).code === "NOT_CONFIGURED") throw error;
+    console.error("Firebase ID token rejected", (error as { code?: string }).code, (error as Error).message);
     fail("OTP_EXPIRED", "That sign-in has expired. Send a new code.");
   }
   if (decoded.firebase.sign_in_provider !== "phone") fail("FORBIDDEN", "Log in with your phone number");

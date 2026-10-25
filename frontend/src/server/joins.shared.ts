@@ -79,12 +79,13 @@ export async function explainNoSpot(activityId: string): Promise<never> {
 // Everyone who should hear that someone is going: the joiner, the host, and
 // friends who can see the plan. Runs after the transaction committed.
 export async function afterJoinGoing(activity: ActivityDoc, userId: string): Promise<void> {
-  const [user, fresh] = await Promise.all([
+  // Count real tickets: goingCount can briefly include spots that parallel
+  // losing attempts took and are about to release.
+  const [user, goingCount] = await Promise.all([
     UserModel.findById(userId).lean(),
-    ActivityModel.findById(activity._id).select("goingCount").lean(),
+    JoinModel.countDocuments({ activityId: activity._id, status: "going" }),
   ]);
   if (!user) return;
-  const goingCount = fresh?.goingCount ?? activity.goingCount;
   await notify(
     userId,
     "joined",
@@ -169,6 +170,15 @@ export async function promoteFromWaitlist(activityId: string): Promise<void> {
       "You're off the waitlist!",
       `A spot opened up at ${activity.title}. Your ticket is ready.`,
       `/party/${activity._id}`,
+    );
+    const user = await UserModel.findById(join.userId).select("name").lean();
+    const goingCount = await JoinModel.countDocuments({ activityId, status: "going" });
+    await notify(
+      activity.hostId,
+      "new_joiner",
+      `${user?.name ?? "Someone"} got a spot at ${activity.title}`,
+      `From the waitlist. ${goingCount}/${activity.capacity} spots are taken.`,
+      `/host/${activity._id}`,
     );
   }
 }

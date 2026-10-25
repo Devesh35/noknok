@@ -3,7 +3,6 @@ import type { Handoff, PaymentProvider } from "@/lib/payments/types";
 import { config } from "@/server/config";
 import type { PaymentDoc } from "@/server/models";
 import { fakeGateway } from "@/server/payments/fake";
-import { phonepeGateway } from "@/server/payments/phonepe";
 import { razorpayGateway } from "@/server/payments/razorpay";
 
 // Everything provider-specific about taking money (PLATFORM_PLAN §5.1).
@@ -21,11 +20,10 @@ export interface OrderInput {
 export interface CreatedOrder {
   providerOrderId: string;
   handoff: Handoff;
-  redirectUrl?: string;
 }
 
 // What the browser posts to /api/payments/verify: Razorpay's signed triple
-// after the modal, or just our order id after a redirect (or a UPI app switch).
+// after the modal, or just our order id after a UPI app switch.
 export type CheckoutInput =
   | { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }
   | { merchantOrderId: string };
@@ -61,7 +59,6 @@ export interface PaymentGateway {
 const GATEWAYS: Record<PaymentProvider, PaymentGateway> = {
   fake: fakeGateway,
   razorpay: razorpayGateway,
-  phonepe: phonepeGateway,
 };
 
 // The gateway new orders go to.

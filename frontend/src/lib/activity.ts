@@ -126,6 +126,34 @@ export const SUBCATEGORIES: Record<Category, Subcategory[]> = {
   ]),
 };
 
+// Cover emoji for a sub-category, so a badminton plan doesn't get a football.
+// Missing entries ("other", or a sub-category added later) fall back to the
+// category's emoji.
+const SUBCATEGORY_EMOJI: Record<string, string> = {
+  football: "⚽", cricket: "🏏", badminton: "🏸", tennis: "🎾", basketball: "🏀",
+  table_tennis: "🏓", swimming: "🏊", cycling: "🚴", volleyball: "🏐",
+  meetup: "👋", networking: "🤝", language_exchange: "🗣️", book_club: "📚",
+  volunteering: "🙌", cleanup: "🧹", coffee: "☕",
+  trek: "🥾", hike: "⛰️", camping: "🏕️", beach: "🏖️", picnic: "🧺", road_trip: "🚗",
+  stargazing: "🔭",
+  board_games: "🎲", card_games: "🃏", video_games: "🎮", quiz: "❓", escape_room: "🔐",
+  chess: "♟️", bowling: "🎳", arcade: "🕹️",
+  dinner: "🍽️", brunch: "🥞", street_food: "🌮", cooking: "🍳", potluck: "🥘",
+  cafe_hopping: "☕",
+  art: "🎨", photography: "📷", writing: "✍️", crafts: "✂️", pottery: "🏺",
+  gym: "🏋️", yoga: "🧘", running: "🏃", hiit: "🔥", pilates: "🤸", martial_arts: "🥋",
+  dance: "💃",
+  concert: "🎤", jam: "🎸", karaoke: "🎙️", dj_night: "🎧", open_mic: "🎤", classical: "🎻",
+  movie: "🎬", standup: "😂", theatre: "🎭", exhibition: "🖼️", amusement_park: "🎢",
+  live_sports: "📺",
+  birthday: "🎂", marriage: "💍", bachelor: "🥳", bachelorette: "👰", reception: "🥂",
+  party: "🎉", get_together: "🤝", anniversary: "💞", farewell: "👋",
+};
+
+export function coverEmoji(category: Category, subcategory?: string): string {
+  return (subcategory && SUBCATEGORY_EMOJI[subcategory]) || CATEGORY_META[category].emoji;
+}
+
 export function subcategoryLabel(category: Category, subcategory?: string): string {
   const found = subcategory && SUBCATEGORIES[category].find((s) => s.value === subcategory);
   return found ? found.label : CATEGORY_META[category].label;
@@ -167,11 +195,43 @@ export function byStart(a: Activity, b: Activity): number {
   return a.startsAt.localeCompare(b.startsAt);
 }
 
+// Comma-separated place parts with repeats dropped (case-insensitive), so a
+// venue name that also opens the address isn't said twice.
+function uniqueParts(parts: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of parts.flatMap((p) => p.split(","))) {
+    const part = raw.trim();
+    const key = part.toLowerCase();
+    if (!part || seen.has(key)) continue;
+    seen.add(key);
+    out.push(part);
+  }
+  return out;
+}
+
+type Place = Pick<Activity, "venueName" | "address"> & Partial<Pick<Activity, "city">>;
+
+// "Venue, street, city" for maps, calendars and shared text.
+export function placeText(activity: Place): string {
+  return uniqueParts([activity.venueName, activity.address, activity.city ?? ""]).join(", ");
+}
+
+// The line shown under the venue name: the address without what the venue
+// line already says. Empty when it would only repeat "venue, city".
+export function addressLine(activity: Place): string {
+  const venue = activity.venueName.trim().toLowerCase();
+  const city = (activity.city ?? "").toLowerCase();
+  const rest = uniqueParts([activity.address]).filter((p) => p.toLowerCase() !== venue);
+  if (rest.length === 0 || (rest.length === 1 && rest[0].toLowerCase() === city)) return "";
+  return rest.join(", ");
+}
+
 export function mapsUrl(activity: Activity): string {
   const query =
     activity.lat !== undefined && activity.lng !== undefined
       ? `${activity.lat},${activity.lng}`
-      : `${activity.venueName}, ${activity.address}`;
+      : placeText(activity);
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 

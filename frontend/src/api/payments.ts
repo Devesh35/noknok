@@ -2,7 +2,6 @@
 
 import { requestJoin, verifyPayment } from "@/api/joins";
 import { ApiError } from "@/lib/errors";
-import { goToGateway } from "@/lib/payments/phonepe";
 import { openRazorpayCheckout, PaymentError } from "@/lib/payments/razorpay";
 import type { Join, Me, SessionDto } from "@/lib/types";
 
@@ -16,9 +15,8 @@ function wait(ms: number) {
 }
 
 // Joins an activity, taking payment first when it costs money. Resolves with
-// the join, or null when the browser is leaving for a redirect gateway (the
-// flow finishes on /pay/return). Throws PaymentError when the payment fails
-// or is dismissed, and ApiError for anything else (FULL, PAST, NOT_VISIBLE…).
+// the join. Throws PaymentError when the payment fails or is dismissed, and
+// ApiError for anything else (FULL, PAST, NOT_VISIBLE…).
 export async function payAndJoin(
   activityId: string,
   session: SessionDto,
@@ -41,9 +39,6 @@ export async function payAndJoin(
   switch (handoff.kind) {
     case "captured":
       return join;
-    case "redirect":
-      goToGateway(handoff.url);
-      return null;
     case "modal": {
       // The spot is held; pay in Razorpay's sheet, then the server checks the signature.
       const response = await openRazorpayCheckout({

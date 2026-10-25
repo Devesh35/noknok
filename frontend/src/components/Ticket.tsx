@@ -83,7 +83,7 @@ export function PriceRows({ price, feeModel }: { price: PriceBreakdown; feeModel
         </dd>
       </div>
       <div className={row}>
-        <dt>GST on fee (placeholder)</dt>
+        <dt>GST on fee</dt>
         <dd className={onJoiner ? "" : "text-faint line-through"}>{formatInr(price.gstP)}</dd>
       </div>
       <div className="mt-1 flex items-center justify-between gap-4 border-t border-line pt-3 text-base font-bold text-ink">

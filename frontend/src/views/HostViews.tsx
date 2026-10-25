@@ -18,8 +18,10 @@ import { Input } from "@/components/Field";
 import { Sheet } from "@/components/Sheet";
 import { Skeleton } from "@/components/Skeleton";
 import { UserRow } from "@/components/UserBits";
-import { formatDate, formatDateTime, formatInr } from "@/lib/format";
+import { RemoveAttendee } from "@/views/HostRemove";
+import { formatDate, formatDateTime, formatInr, plural } from "@/lib/format";
 import { now } from "@/lib/time";
+import { IS_PRODUCTION } from "@/lib/env";
 import { toast } from "@/lib/toast";
 import type { Activity, EarningsRow, JoinWithUser } from "@/lib/types";
 
@@ -50,6 +52,7 @@ function HostSkeleton() {
 function LoginPrompt({ next }: { next: string }) {
   return (
     <EmptyState
+      page
       emoji="📣"
       title="Host your own plan"
       body="Create a party, game or trek, choose who can see it, and let NokNok collect the money."
@@ -74,6 +77,7 @@ function LoadFailed({
 }) {
   return (
     <EmptyState
+      page
       emoji="📡"
       title="Couldn't load your hosting"
       body={message}
@@ -85,6 +89,7 @@ function LoadFailed({
 function NotYours() {
   return (
     <EmptyState
+      page
       emoji="🕵️"
       title="Not your activity"
       body="Only the host can manage an activity."
@@ -131,7 +136,7 @@ export function HostHub() {
       </div>
       {upcoming.length === 0 ? (
         <EmptyState
-          emoji="🪩"
+          emoji="🥳"
           title="Nothing coming up"
           body="Create your first activity. It takes about a minute."
         />
@@ -232,9 +237,11 @@ function PayoutTimeline({ row }: { row: EarningsRow }) {
           ))}
         </ol>
       )}
-      <p className="text-xs text-muted">
-        Mock figures: no real money moves in the prototype.
-      </p>
+      {!IS_PRODUCTION && (
+        <p className="text-xs text-muted">
+          Mock figures: no real money moves in the prototype.
+        </p>
+      )}
     </section>
   );
 }
@@ -334,9 +341,11 @@ export function HostManage({ id }: { id: string }) {
           {activity.title}
         </h1>
         <p className="text-soft">
-          {going.length}/{activity.capacity} going · {spotsLeft} spot
-          {spotsLeft === 1 ? "" : "s"} left
-          {waitlist.length > 0 && ` · ${waitlist.length} on waitlist`}
+          {cancelled
+            ? "This activity is cancelled. Everyone who had joined was notified."
+            : `${going.length}/${activity.capacity} going${
+                past ? "" : ` · ${plural(spotsLeft, "spot")} left`
+              }${waitlist.length > 0 ? ` · ${waitlist.length} on waitlist` : ""}`}
         </p>
         <div className="flex flex-wrap gap-2 pt-1">
           <Link href={`/party/${id}`} className={buttonClass("secondary")}>
@@ -386,8 +395,11 @@ export function HostManage({ id }: { id: string }) {
         )}
         {going.length === 0 ? (
           <p className="text-sm text-soft">
-            Nobody has joined yet. Share your invite link to get the first few
-            in.
+            {cancelled
+              ? "No one is attending: the activity was cancelled."
+              : past
+                ? "Nobody joined this one."
+                : "Nobody has joined yet. Share your invite link to get the first few in."}
           </p>
         ) : (
           <div className="space-y-2">
@@ -403,6 +415,8 @@ export function HostManage({ id }: { id: string }) {
                   <span className="shrink-0 rounded-full bg-success/15 px-2.5 py-1 text-xs font-semibold text-success">
                     Checked in ✓
                   </span>
+                ) : live ? (
+                  <RemoveAttendee activityId={id} user={entry.user} paid={entry.join.ticketP + entry.join.feeP > 0} />
                 ) : undefined,
               ),
             )}
@@ -451,7 +465,7 @@ export function HostManage({ id }: { id: string }) {
         <p className="text-sm text-soft">
           {going.length === 0
             ? "Nobody has joined yet. The page will show it as cancelled."
-            : `All ${going.length} people who joined will be notified${
+            : `${going.length === 1 ? "The 1 person" : `All ${going.length} people`} who joined will be notified${
                 activity.priceP > 0 ? " and refunded in full" : ""
               }. This can't be undone.`}
         </p>

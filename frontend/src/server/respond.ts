@@ -25,6 +25,15 @@ export function errorResponse(error: unknown) {
     const message = first ? `${first.path.join(".") || "input"}: ${first.message}` : "Invalid input";
     return NextResponse.json({ error: { code: "INVALID", message } }, { status: 400 });
   }
+  // A unique index caught a race the service's own check missed (two tabs
+  // registering the same number, two people picking one handle). That is a
+  // conflict to retry, not a server fault to page about.
+  if ((error as { code?: number }).code === 11000) {
+    return NextResponse.json(
+      { error: { code: "CONFLICT", message: "That was just taken. Try again." } },
+      { status: ERROR_STATUS.CONFLICT || 409 },
+    );
+  }
   console.error(error);
   return NextResponse.json(
     { error: { code: "SERVER", message: "Something went wrong" } },

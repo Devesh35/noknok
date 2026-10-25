@@ -68,7 +68,10 @@ export async function sendFriendRequest(me: UserDoc, toId: string): Promise<Frie
   const dev = await devSettings();
   if (toId === me._id) fail("INVALID", "That's you");
   const target = await UserModel.findOne({ _id: toId, deletedAt: { $exists: false } }).lean();
-  if (!target) fail("NOT_FOUND", "No such person");
+  // A block either way: answer as if they don't exist.
+  if (!target || target.blockedIds.includes(me._id) || me.blockedIds.includes(toId)) {
+    fail("NOT_FOUND", "No such person");
+  }
 
   const existing = await requestBetween(me._id, toId);
   if (existing && (existing.status === "accepted" || existing.fromId === me._id)) {

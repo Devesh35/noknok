@@ -9,3 +9,6 @@ No git work-trees. All work uses sequential checkouts in the same tree.
 use chrome to view or verify the UI.
 you are allowed to alter the design of page to make it more user-friendly, but make the ux better. Also list these items - schema, apis and ui mockup.
 verify for edge-cases which can happen.
+
+-- project --
+Test phone numbers - 7878787878, 7979797979, 8989898989. OTP 123456

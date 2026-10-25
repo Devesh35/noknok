@@ -4,7 +4,7 @@ import type { Handoff, PaymentProvider, VerifyResult } from "@/lib/payments/type
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { connectDb } from "@/server/db";
-import { expirePendingJoin, settlePendingJoin, takeSpot } from "@/server/joins.shared";
+import { expirePendingJoin, releaseSpot, settlePendingJoin, takeSpot } from "@/server/joins.shared";
 import { ActivityModel, JoinModel, PaymentModel, WebhookEventModel, type JoinDoc, type PaymentDoc } from "@/server/models";
 import { notify } from "@/server/notify";
 import { gatewayFor, selectGateway, type CheckoutInput, type GatewayEvent } from "@/server/payments/gateway";
@@ -15,8 +15,8 @@ import { fail } from "@/server/respond";
 // Provider specifics live in src/server/payments/*. Nothing here runs a
 // gateway call inside a transaction.
 
-// A redirect gateway can take a while to confirm (UPI approvals); the spot
-// stays held this long, counted from when the join was made.
+// UPI approvals can take a while to confirm; the spot stays held this long,
+// counted from when the join was made.
 const PENDING_HOLD_MS = 30 * 60 * 1000;
 const POLL_BATCH = 50;
 
@@ -45,7 +45,6 @@ export async function createPayment(join: JoinDoc, amountP: number): Promise<Han
     provider: gateway.provider,
     merchantOrderId,
     providerOrderId: order.providerOrderId,
-    redirectUrl: order.redirectUrl,
     amountP,
     status: "created",
   });
@@ -66,23 +65,65 @@ async function paymentFor(input: CheckoutInput): Promise<PaymentDoc | null> {
     : PaymentModel.findOne({ provider: "razorpay", providerOrderId: input.razorpay_order_id }).lean();
 }
 
+// Money arrived for a join that can't become a ticket any more (the hold
+// lapsed and the plan is full, or the joiner left / was removed / the plan
+// was cancelled while they were paying). Keep the capture on record so the
+// refund has something to act on, then give it all back.
+async function captureAndRefund(payment: PaymentDoc, join: JoinDoc, providerPaymentId: string): Promise<void> {
+  await PaymentModel.updateOne(
+    { _id: payment._id, status: "created" },
+    { $set: { status: "captured", providerPaymentId } },
+  );
+  await audit(join.userId, "payment.capture", "payment", payment._id, { joinId: join._id, orphaned: true });
+  await refundPayment(join, payment.amountP);
+}
+
 // The gateway says the money arrived. A late capture after the hold lapsed
-// still gets a spot if one is free; otherwise it is refunded in full.
+// still gets a spot if one is free; otherwise it is refunded in full. A
+// capture for a join that is already over (left, host_cancelled) is refunded
+// too: that money never bought a spot.
 async function capture(payment: PaymentDoc, providerPaymentId: string): Promise<void> {
   const join = await JoinModel.findById(payment.joinId).lean();
   if (!join || join.status === "going") return;
+  // True when this call took a spot for an expired join: on failure the
+  // spot has to go back, unless a parallel capture used it.
+  let revived = false;
   if (join.status === "expired") {
     const taken = await takeSpot(join.activityId);
     if (!taken) {
-      await PaymentModel.updateOne({ _id: payment._id }, { $set: { status: "captured", providerPaymentId } });
-      await refundPayment(join, payment.amountP);
+      await captureAndRefund(payment, join, providerPaymentId);
       return;
     }
-    await JoinModel.updateOne({ _id: join._id }, { $set: { status: "pending_payment" } });
+    // Two deliveries of the same capture race here; only one revives.
+    const result = await JoinModel.updateOne(
+      { _id: join._id, status: "expired" },
+      { $set: { status: "pending_payment" } },
+    );
+    if (!result.modifiedCount) {
+      await releaseSpot(join.activityId);
+      return;
+    }
+    revived = true;
     join.status = "pending_payment";
   }
-  if (join.status !== "pending_payment") return;
-  await settlePendingJoin(join, payment._id, providerPaymentId);
+  if (join.status !== "pending_payment") {
+    await captureAndRefund(payment, join, providerPaymentId);
+    return;
+  }
+  try {
+    await settlePendingJoin(join, payment._id, providerPaymentId);
+  } catch (error) {
+    const after = await JoinModel.findById(join._id).select("status").lean();
+    // A parallel capture settled it first and used the spot taken above.
+    if (after?.status === "going") return;
+    if (revived) {
+      // Back to where it was, so the retry (redelivery or poll) takes a spot
+      // again instead of settling a join that no longer holds one.
+      await JoinModel.updateOne({ _id: join._id, status: "pending_payment" }, { $set: { status: "expired" } });
+      await releaseSpot(join.activityId);
+    }
+    throw error;
+  }
   await audit(join.userId, "payment.capture", "payment", payment._id, { joinId: join._id });
 }
 
@@ -105,7 +146,7 @@ async function markFailed(payment: PaymentDoc, tell: boolean): Promise<void> {
   );
 }
 
-// The browser is back from the gateway (modal, redirect or UPI app switch).
+// The browser is back from the gateway (modal or UPI app switch).
 export async function verifyPayment(me: { _id: string }, input: CheckoutInput): Promise<VerifyResult> {
   await connectDb();
   const payment = await paymentFor(input);
@@ -136,15 +177,74 @@ export async function verifyPayment(me: { _id: string }, input: CheckoutInput): 
 
 // Refunds whatever was captured for this join through the gateway that took
 // it. No captured payment (free plan, fake gateway) means nothing to do.
+// The amount owed is written before the gateway is asked, so a gateway
+// fault leaves a record that retryOwedRefunds() picks up on the next tick
+// instead of a joiner who was told "refund on its way" and never got one.
 export async function refundPayment(join: Pick<JoinDoc, "_id">, amountP: number): Promise<void> {
   await connectDb();
   const payment = await PaymentModel.findOne({ joinId: join._id, status: "captured" }).lean();
   if (!payment) return;
+  await PaymentModel.updateOne({ _id: payment._id, status: "captured" }, { $set: { refundOwedP: amountP } });
+  if (await claimRefund(payment._id)) await issueRefund(payment, amountP);
+}
+
+// Two ticks can overlap (two schedulers, or one slower than the interval),
+// and a tick can overlap the request that owed the refund. Whoever flips
+// refundAttemptAt does the gateway call; the claim lapses so a crash
+// mid-refund is retried, after the gateway has had time to settle.
+const REFUND_CLAIM_MS = 10 * 60 * 1000;
+
+async function claimRefund(paymentId: string): Promise<boolean> {
+  const nowMs = Date.now();
+  const claimed = await PaymentModel.updateOne(
+    {
+      _id: paymentId,
+      status: "captured",
+      refundOwedP: { $exists: true },
+      $or: [{ refundAttemptAt: { $exists: false } }, { refundAttemptAt: { $lt: new Date(nowMs - REFUND_CLAIM_MS) } }],
+    },
+    { $set: { refundAttemptAt: new Date(nowMs) } },
+  );
+  return claimed.modifiedCount === 1;
+}
+
+async function issueRefund(payment: PaymentDoc, amountP: number): Promise<void> {
   const { providerRefundId } = await gatewayFor(payment.provider).refund(payment, amountP);
   await PaymentModel.updateOne(
     { _id: payment._id },
-    { $set: { status: amountP >= payment.amountP ? "refunded" : "partially_refunded", providerRefundId } },
+    {
+      $set: { status: amountP >= payment.amountP ? "refunded" : "partially_refunded", providerRefundId },
+      $unset: { refundOwedP: 1, refundAttemptAt: 1 },
+    },
   );
+}
+
+// Job tick: retries refunds whose gateway call failed. Each one is isolated
+// so a single gateway fault doesn't stop the rest.
+export async function retryOwedRefunds(): Promise<void> {
+  await connectDb();
+  const owed = await PaymentModel.find({ status: "captured", refundOwedP: { $exists: true } })
+    .limit(POLL_BATCH)
+    .lean();
+  for (const payment of owed) {
+    if (!(await claimRefund(payment._id))) continue;
+    try {
+      await issueRefund(payment, payment.refundOwedP ?? payment.amountP);
+    } catch (error) {
+      console.error(`Refund for payment ${payment._id} failed again`, error);
+    }
+  }
+}
+
+// A refund the caller can't do anything about failing right now (the joiner
+// has already been told, the join is already closed): log it and let the
+// tick retry. Used by every "refund then carry on" path.
+export async function refundOrDefer(join: Pick<JoinDoc, "_id">, amountP: number): Promise<void> {
+  try {
+    await refundPayment(join, amountP);
+  } catch (error) {
+    console.error(`Refund for join ${join._id} deferred to the job tick`, error);
+  }
 }
 
 // Authenticates and reads a webhook. null = not from the gateway.
@@ -162,7 +262,9 @@ async function paymentForEvent(provider: GatewayName, event: GatewayEvent): Prom
 }
 
 // Idempotent: `${provider}:${eventId}` is the primary key of webhook_events,
-// so a redelivery stops at the insert (AGENTS-B rule 7).
+// so a redelivery of an event that was handled stops at the insert (AGENTS-B
+// rule 7). One whose handling threw (processedAt unset) is handled again:
+// the gateway redelivers until it gets a 200 and this is the retry.
 export async function handleGatewayEvent(provider: GatewayName, event: GatewayEvent, rawBody: string): Promise<void> {
   await connectDb();
   const id = `${provider}:${event.eventId}`;
@@ -175,8 +277,9 @@ export async function handleGatewayEvent(provider: GatewayName, event: GatewayEv
       receivedAt: new Date(),
     });
   } catch (error) {
-    if ((error as { code?: number }).code === 11000) return;
-    throw error;
+    if ((error as { code?: number }).code !== 11000) throw error;
+    const seen = await WebhookEventModel.findById(id).select("processedAt").lean();
+    if (seen?.processedAt) return;
   }
 
   const payment = await paymentForEvent(provider, event);
@@ -186,9 +289,10 @@ export async function handleGatewayEvent(provider: GatewayName, event: GatewayEv
         await capture(payment, event.providerPaymentId ?? payment.providerOrderId);
         break;
       case "failed":
-        // Razorpay lets the joiner retry inside the sheet they're looking at;
-        // a PhonePe failure arrives after they left, so they hear about it.
-        await markFailed(payment, provider === "phonepe");
+        // One failed attempt doesn't end the order: Razorpay lets the joiner
+        // retry inside the sheet they're looking at, and a retry that
+        // succeeds would then land on an expired join. The hold timer (and
+        // pollPendingPayments) decide when the spot goes back.
         break;
       case "refunded": {
         const amountP = event.amountP ?? payment.amountP;
@@ -210,9 +314,11 @@ export async function handleGatewayEvent(provider: GatewayName, event: GatewayEv
 }
 
 // Job tick: asks the gateway about every spot still held for a payment, so a
-// closed tab or a missed webhook still ends in the right state.
+// closed tab or a missed webhook still ends in the right state. Also retries
+// refunds the gateway refused earlier.
 export async function pollPendingPayments(): Promise<void> {
   await connectDb();
+  await retryOwedRefunds();
   const held = await JoinModel.find({ status: "pending_payment" }).select("_id").limit(POLL_BATCH).lean();
   if (!held.length) return;
   const payments = await PaymentModel.find({ joinId: { $in: held.map((j) => j._id) }, status: "created" }).lean();

@@ -71,10 +71,13 @@ export async function createQuickPlan(input: QuickPlanInput): Promise<Result<Act
   return result;
 }
 
-// Returns whether the user is now interested.
-export async function toggleInterested(activityId: string): Promise<Result<{ interested: boolean }>> {
+// Sets (or clears) interest. Idempotent: a retried tap can't flip it back.
+export async function setInterested(
+  activityId: string,
+  interested: boolean,
+): Promise<Result<{ interested: boolean }>> {
   const result = await safe<{ interested: boolean }>(
-    apiFetch(`/activities/${activityId}/interest`, { method: "POST" }),
+    apiFetch(`/activities/${activityId}/interest`, { method: interested ? "POST" : "DELETE" }),
   );
   if (result.ok) await invalidateAll();
   return result;

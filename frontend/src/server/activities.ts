@@ -5,14 +5,15 @@ import { HOUR_MS } from "@/lib/time";
 import type { Activity } from "@/lib/types";
 import { audit } from "@/server/audit";
 import { viewerKey } from "@/server/auth";
-import { devSettings, nowDate } from "@/server/clock";
+import { devSettings, now, nowDate } from "@/server/clock";
 import { connectDb, withTx } from "@/server/db";
 import { toActivity } from "@/server/dto";
-import { cancelJoinsFor, notifyCancelled, promoteFromWaitlist } from "@/server/joins.shared";
+import { cancelJoinsFor, isPast, notifyCancelled, promoteFromWaitlist } from "@/server/joins.shared";
 import {
   ActivityModel,
   InterestedModel,
   InviteOpenModel,
+  JoinModel,
   ReportModel,
   ReviewModel,
   UserModel,
@@ -20,12 +21,20 @@ import {
   type UserDoc,
 } from "@/server/models";
 import { notify } from "@/server/notify";
-import { refundPayment } from "@/server/payments";
+import { refundOrDefer } from "@/server/payments";
 import { rateLimit } from "@/server/ratelimit";
 import { fail } from "@/server/respond";
 
 const QUICK_PLAN_HOURS = 2;
 const SHORT_CODE_TRIES = 5;
+const MAX_AHEAD_MS = 365 * 24 * HOUR_MS;
+
+// A new start time must be in the future and within a year.
+function checkStart(startsAt: string): void {
+  const at = Date.parse(startsAt);
+  if (at <= now()) fail("PAST", "Pick a time that hasn't passed yet");
+  if (at > now() + MAX_AHEAD_MS) fail("INVALID", "Pick a date within the next year");
+}
 
 export async function activityById(id: string): Promise<ActivityDoc | null> {
   await connectDb();
@@ -37,6 +46,16 @@ async function ownActivity(me: UserDoc, id: string): Promise<ActivityDoc> {
   if (!activity) fail("NOT_FOUND", "This plan no longer exists");
   if (activity.hostId !== me._id) fail("FORBIDDEN", "Not your plan");
   return activity;
+}
+
+// For pages: a missing plan or short link answers with a real 404.
+export async function activityExists(id: string): Promise<boolean> {
+  return (await activityById(id)) !== null;
+}
+
+export async function shortCodeExists(code: string): Promise<boolean> {
+  await connectDb();
+  return (await ActivityModel.exists({ shortCode: code.toUpperCase() })) !== null;
 }
 
 export async function activityByCode(code: string): Promise<string> {
@@ -80,6 +99,7 @@ function fieldsFrom(input: ActivityInput) {
 
 export async function createActivity(me: UserDoc, input: ActivityInput, quick = false): Promise<Activity> {
   await devSettings();
+  checkStart(input.startsAt);
   await connectDb();
   // Short codes are six characters; a collision is rare but possible.
   for (let attempt = 0; attempt < SHORT_CODE_TRIES; attempt++) {
@@ -106,7 +126,20 @@ export async function createActivity(me: UserDoc, input: ActivityInput, quick = 
 
 export async function updateActivity(me: UserDoc, id: string, input: ActivityInput): Promise<Activity> {
   await devSettings();
-  await ownActivity(me, id);
+  const before = await ownActivity(me, id);
+  if (before.status === "cancelled") fail("CANCELLED", "This plan was cancelled");
+  if (isPast(before)) fail("PAST", "This plan has already happened");
+  const timeChanged = Date.parse(input.startsAt) !== before.startsAt.getTime();
+  if (timeChanged) checkStart(input.startsAt);
+  if (input.capacity < before.goingCount) {
+    fail("CONFLICT", `${before.goingCount} people have already joined, so it can't be lower`);
+  }
+  // People paid (or joined free) at the old price.
+  const holders = await JoinModel.countDocuments({ activityId: id, status: { $in: ["going", "pending_payment"] } });
+  if (holders > 0 && input.priceP !== before.priceP) {
+    fail("CONFLICT", "People have already joined, so the price can't change");
+  }
+
   const fields = fieldsFrom(input);
   const doc = await ActivityModel.findByIdAndUpdate(
     id,
@@ -115,25 +148,54 @@ export async function updateActivity(me: UserDoc, id: string, input: ActivityInp
   ).lean();
   if (!doc) fail("NOT_FOUND");
   await audit(me._id, "activity.update", "activity", id);
+  const placeChanged = input.venueName !== before.venueName || input.address !== before.address;
+  if (timeChanged || placeChanged) await notifyPlanChanged(doc, timeChanged, placeChanged);
   await promoteFromWaitlist(id); // capacity may have grown
   return toActivity(doc, { includeInviteToken: true });
+}
+
+// Everyone holding a spot or waiting for one hears about a new time or place.
+async function notifyPlanChanged(activity: ActivityDoc, time: boolean, place: boolean): Promise<void> {
+  const joins = await JoinModel.find({
+    activityId: activity._id,
+    status: { $in: ["going", "pending_payment", "waitlisted"] },
+  })
+    .select("userId")
+    .lean();
+  const what = time && place ? "time and place" : time ? "time" : "place";
+  for (const join of joins) {
+    await notify(
+      join.userId,
+      "plan_updated",
+      `${activity.title}: new ${what}`,
+      "The host changed the details. Check the plan and leave if it no longer works for you.",
+      `/party/${activity._id}`,
+    );
+  }
 }
 
 // Cancels the activity and refunds everyone in full.
 export async function cancelActivity(me: UserDoc, id: string): Promise<void> {
   await devSettings();
   const activity = await ownActivity(me, id);
+  await cancelActivityAs(me._id, activity);
+}
+
+// Also used when the host deletes their account.
+export async function cancelActivityAs(actorId: string, activity: ActivityDoc): Promise<void> {
   if (activity.status === "cancelled") return;
+  const id = activity._id;
   const joins = await withTx(async (session) => {
     await ActivityModel.updateOne({ _id: id }, { $set: { status: "cancelled" } }, { session });
     const changed = await cancelJoinsFor(activity, session);
-    await audit(me._id, "activity.cancel", "activity", id, { joins: changed.length }, session);
+    await audit(actorId, "activity.cancel", "activity", id, { joins: changed.length }, session);
     return changed;
   });
   await notifyCancelled(activity, joins);
+  // Everyone has been told; one gateway fault must not skip the others.
   for (const join of joins) {
     if (join.status === "going" && join.ticketP + join.feeP > 0) {
-      await refundPayment(join, join.ticketP + join.feeP);
+      await refundOrDefer(join, join.ticketP + join.feeP);
     }
   }
 }
@@ -149,7 +211,8 @@ export async function createQuickPlan(me: UserDoc, input: QuickPlanInput): Promi
       subcategory: input.subcategory,
       description: `Looking for ${input.need} more ${plural} to join. Message the host in person at the venue.`,
       venueName: input.venueName,
-      address: [input.venueName, input.area, input.city].filter(Boolean).join(", "),
+      // The venue name is shown on its own line; repeating it here doubled it.
+      address: [input.area, input.city].filter(Boolean).join(", "),
       city: input.city,
       area: input.area,
       startsAt: input.startsAt,
@@ -167,18 +230,23 @@ export async function createQuickPlan(me: UserDoc, input: QuickPlanInput): Promi
   );
 }
 
-// Returns whether the user is now interested.
-export async function toggleInterested(me: UserDoc, activityId: string): Promise<boolean> {
+// Sets or clears interest and returns the new state. The count only moves when
+// the row actually changed, so repeats are no-ops.
+export async function setInterested(me: UserDoc, activityId: string, interested: boolean): Promise<boolean> {
   const activity = await activityById(activityId);
   if (!activity) fail("NOT_FOUND");
   const id = `${me._id}:${activityId}`;
-  const removed = await InterestedModel.deleteOne({ _id: id });
-  if (removed.deletedCount) {
-    await ActivityModel.updateOne({ _id: activityId }, { $inc: { interestedCount: -1 } });
+  if (!interested) {
+    const removed = await InterestedModel.deleteOne({ _id: id });
+    if (removed.deletedCount) await ActivityModel.updateOne({ _id: activityId }, { $inc: { interestedCount: -1 } });
     return false;
   }
-  await InterestedModel.create({ _id: id, userId: me._id, activityId });
-  await ActivityModel.updateOne({ _id: activityId }, { $inc: { interestedCount: 1 } });
+  const added = await InterestedModel.updateOne(
+    { _id: id },
+    { $setOnInsert: { _id: id, userId: me._id, activityId } },
+    { upsert: true },
+  );
+  if (added.upsertedCount) await ActivityModel.updateOne({ _id: activityId }, { $inc: { interestedCount: 1 } });
   return true;
 }
 
@@ -225,7 +293,14 @@ export async function addReview(
   await devSettings();
   const activity = await activityById(activityId);
   if (!activity) fail("NOT_FOUND");
-  if (await ReviewModel.exists({ activityId, userId: me._id })) return;
+  if (activity.status === "cancelled") fail("CANCELLED", "This plan was cancelled");
+  if (!isPast(activity)) fail("CONFLICT", "You can rate it once it's over");
+  const join = await JoinModel.findOne({ activityId, userId: me._id, status: "going" }).lean();
+  if (!join) fail("FORBIDDEN", "Only people who went can rate it");
+  // Once the host checks anyone in, only checked-in people count as having gone.
+  const checkedIn = await JoinModel.exists({ activityId, status: "going", checkedInAt: { $exists: true } });
+  if (checkedIn && !join.checkedInAt) fail("FORBIDDEN", "Only people who were checked in can rate it");
+  if (await ReviewModel.exists({ activityId, userId: me._id })) fail("CONFLICT", "You've already rated this");
   await ReviewModel.create({
     _id: newId("r"),
     activityId,

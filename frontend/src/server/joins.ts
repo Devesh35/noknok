@@ -4,7 +4,7 @@ import type { CheckInResult, Join, JoinResult } from "@/lib/types";
 import { canViewActivity, LIVE_STATUSES } from "@/server/access";
 import { audit } from "@/server/audit";
 import { viewerKey } from "@/server/auth";
-import { devSettings, nowDate, updateDevSettings } from "@/server/clock";
+import { devSettings, now, nowDate, updateDevSettings } from "@/server/clock";
 import { connectDb, withTx } from "@/server/db";
 import { rupees, toJoin } from "@/server/dto";
 import {
@@ -29,11 +29,12 @@ import {
   type UserDoc,
 } from "@/server/models";
 import { notify } from "@/server/notify";
-import { createPayment, paymentsAreFake, refundPayment, resumePayment } from "@/server/payments";
+import { createPayment, paymentsAreFake, refundOrDefer, resumePayment } from "@/server/payments";
 import { rateLimit } from "@/server/ratelimit";
 import { fail } from "@/server/respond";
 
 const HOLD_MS = 10 * 60 * 1000;
+const CHECK_IN_OPENS_MS = 2 * 60 * 60 * 1000;
 const JOIN_LIMIT = 20;
 
 function newJoinId(): string {
@@ -218,19 +219,27 @@ export async function leaveActivity(me: UserDoc, activityId: string): Promise<nu
   const activity = await ActivityModel.findById(activityId).lean();
   const join = activity ? await liveJoin(activityId, me._id) : null;
   if (!activity || !join) return 0;
+  if (join.checkedInAt) fail("CONFLICT", "You've already checked in to this plan");
+  // After it's over a spot can't be given back; leaving then would erase a no-show.
+  if (isPast(activity)) fail("PAST", "This plan has already happened");
 
   const wasGoing = join.status === "going";
   const paid = join.ticketP + join.feeP;
   const refund = wasGoing && isRefundable(activity) ? paid : 0;
-  await withTx(async (session) => {
+  // Two "leave" taps race here: only the one that flips the status gives the
+  // spot back and refunds.
+  const changed = await withTx(async (session) => {
     const set: Partial<JoinDoc> = { status: "left", refundedP: refund };
     // Without a refund the host keeps their share.
     if (refund > 0 || !wasGoing) set.hostShareP = 0;
-    await JoinModel.updateOne({ _id: join._id }, { $set: set }, { session });
+    const result = await JoinModel.updateOne({ _id: join._id, status: join.status }, { $set: set }, { session });
+    if (!result.modifiedCount) return false;
     const inc = join.status === "waitlisted" ? { waitlistCount: -1 } : { goingCount: -1 };
     await ActivityModel.updateOne({ _id: activityId }, { $inc: inc }, { session });
     await audit(me._id, "join.leave", "join", join._id, { refundedP: refund }, session);
+    return true;
   });
+  if (!changed) return 0;
   if (refund > 0) {
     await notify(
       me._id,
@@ -239,10 +248,61 @@ export async function leaveActivity(me: UserDoc, activityId: string): Promise<nu
       `You left ${activity.title} before the cutoff.`,
       `/party/${activityId}`,
     );
-    await refundPayment(join, refund);
+    await refundOrDefer(join, refund);
+  }
+  if (wasGoing && activity.status === "active") {
+    const fresh = await ActivityModel.findById(activityId).select("goingCount").lean();
+    await notify(
+      activity.hostId,
+      "joiner_left",
+      `${me.name} left ${activity.title}`,
+      `${fresh?.goingCount ?? 0}/${activity.capacity} spots are taken.`,
+      `/host/${activityId}`,
+    );
   }
   if (join.status !== "waitlisted") await promoteFromWaitlist(activityId);
   return refund;
+}
+
+// The host takes someone off an upcoming plan (or a block does it for them):
+// their join becomes host_cancelled with a full refund, as if the host had
+// cancelled for them. Returns whether anything changed.
+export async function removeFromActivity(actorId: string, activity: ActivityDoc, userId: string): Promise<boolean> {
+  await connectDb();
+  const join = await liveJoin(activity._id, userId);
+  if (!join) return false;
+  const wasGoing = join.status === "going";
+  const refund = wasGoing ? join.ticketP + join.feeP : 0;
+  const changed = await withTx(async (session) => {
+    const result = await JoinModel.updateOne(
+      { _id: join._id, status: join.status },
+      { $set: { status: "host_cancelled", refundedP: refund, hostShareP: 0 } },
+      { session },
+    );
+    if (!result.modifiedCount) return false;
+    const inc = join.status === "waitlisted" ? { waitlistCount: -1 } : { goingCount: -1 };
+    await ActivityModel.updateOne({ _id: activity._id }, { $inc: inc }, { session });
+    await audit(actorId, "join.remove", "join", join._id, { refundedP: refund }, session);
+    return true;
+  });
+  if (!changed) return false;
+  await notify(
+    userId,
+    "cancelled",
+    `You're no longer going to ${activity.title}`,
+    refund > 0 ? `The host removed your spot. ${rupees(refund)} is being refunded.` : "The host removed your spot.",
+    `/party/${activity._id}`,
+  );
+  if (refund > 0) await refundOrDefer(join, refund);
+  if (join.status !== "waitlisted") await promoteFromWaitlist(activity._id);
+  return true;
+}
+
+export async function removeAttendee(me: UserDoc, activityId: string, userId: string): Promise<void> {
+  await devSettings();
+  const activity = await liveActivity(activityId);
+  if (activity.hostId !== me._id) fail("FORBIDDEN", "Not your plan");
+  if (!(await removeFromActivity(me._id, activity, userId))) fail("NOT_FOUND", "They aren't on this plan");
 }
 
 // Host hands a free spot to someone on the waitlist. False if there's no room.
@@ -280,6 +340,10 @@ export async function checkIn(me: UserDoc, activityId: string, ticketId: string)
   const activity = await ActivityModel.findById(activityId).lean();
   if (!activity) fail("NOT_FOUND");
   if (activity.hostId !== me._id) fail("FORBIDDEN", "Not your plan");
+  if (now() < activity.startsAt.getTime() - CHECK_IN_OPENS_MS) {
+    fail("CONFLICT", "Check-in opens 2 hours before the start");
+  }
+  if (isPast(activity)) fail("PAST", "This plan has already ended");
   const join = await JoinModel.findOne({
     _id: ticketId.trim().toUpperCase(),
     activityId,

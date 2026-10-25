@@ -14,7 +14,8 @@ interface LeafletBits {
 
 // Leaflet + OpenStreetMap. Leaflet touches `window`, so it is imported inside
 // the effect.
-export function VenueMapOsm({ center, zoomed, focus, onDrop }: VenueMapProps) {
+export function VenueMapOsm({ center, zoomed, focus, onDrop, label, className }: VenueMapProps) {
+  const editable = onDrop !== undefined;
   const containerRef = useRef<HTMLDivElement>(null);
   const leaflet = useRef<LeafletBits | null>(null);
   const onDropRef = useRef(onDrop);
@@ -34,15 +35,17 @@ export function VenueMapOsm({ center, zoomed, focus, onDrop }: VenueMapProps) {
         iconSize: [40, 40],
         iconAnchor: [20, 36],
       });
-      const marker = L.marker([center.lat, center.lng], { icon, draggable: true }).addTo(map);
-      marker.on("dragend", () => {
-        const { lat, lng } = marker.getLatLng();
-        onDropRef.current(lat, lng);
-      });
-      map.on("click", (event) => {
-        marker.setLatLng(event.latlng);
-        onDropRef.current(event.latlng.lat, event.latlng.lng);
-      });
+      const marker = L.marker([center.lat, center.lng], { icon, draggable: editable }).addTo(map);
+      if (editable) {
+        marker.on("dragend", () => {
+          const { lat, lng } = marker.getLatLng();
+          onDropRef.current?.(lat, lng);
+        });
+        map.on("click", (event) => {
+          marker.setLatLng(event.latlng);
+          onDropRef.current?.(event.latlng.lat, event.latlng.lng);
+        });
+      }
       map.setView([center.lat, center.lng], zoomed ? 16 : 12);
       leaflet.current = { map, marker };
     });
@@ -65,8 +68,8 @@ export function VenueMapOsm({ center, zoomed, focus, onDrop }: VenueMapProps) {
     <div
       ref={containerRef}
       role="application"
-      aria-label="Map: tap or drag the pin to the venue"
-      className="isolate h-64 w-full overflow-hidden rounded-3xl border border-line"
+      aria-label={label ?? "Map: tap or drag the pin to the venue"}
+      className={`isolate w-full overflow-hidden rounded-3xl border border-line ${className ?? "h-64"}`}
     />
   );
 }

@@ -126,7 +126,7 @@ export function VenuePicker({
         />
         {(results.length > 0 || searching) && (
           <ul
-            role="listbox"
+            aria-label="Matching places"
             className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-auto rounded-2xl border border-line bg-surface p-1 shadow-xl"
           >
             {searching && results.length === 0 && (

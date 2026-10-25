@@ -6,19 +6,21 @@ import { Avatar, AvatarStack } from "@/components/Avatar";
 import { CategoryBadge, VisibilityBadge } from "@/components/Badge";
 import { Button, buttonClass } from "@/components/Button";
 import { CalendarIcon, MapPinIcon } from "@/components/icons";
-import { mapsUrl } from "@/lib/activity";
+import { VenueMap } from "@/components/VenueMap";
+import { addressLine, mapsUrl } from "@/lib/activity";
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import {
   formatDateTime,
   formatInr,
   formatRelative,
   formatTime,
+  plural,
+  refundWindow,
 } from "@/lib/format";
 import type { Activity, User } from "@/lib/types";
 import type { PaymentState, SheetName } from "@/views/PartySheets";
 
 const LONG_DESCRIPTION = 160;
-const MAP_SPAN = 0.008; // degrees shown around the pin
 
 // Badges, title, when and where.
 export function PartyHeader({
@@ -33,6 +35,8 @@ export function PartyHeader({
   live: boolean;
 }) {
   const hasPin = activity.lat !== undefined && activity.lng !== undefined;
+  // Without a street address, the city still tells people roughly where.
+  const address = addressLine(activity) || activity.city;
   return (
     <header className="space-y-3">
       <div className="flex flex-wrap gap-1">
@@ -83,8 +87,12 @@ export function PartyHeader({
         <p>
           <span className="font-semibold">{activity.venueName}</span>
           <br />
-          <span className="text-muted">{activity.address}</span>
-          <br />
+          {address && (
+            <>
+              <span className="text-muted">{address}</span>
+              <br />
+            </>
+          )}
           <a
             href={mapsUrl(activity)}
             target="_blank"
@@ -96,15 +104,12 @@ export function PartyHeader({
         </p>
       </div>
       {hasPin && (
-        <iframe
-          title={`Map showing ${activity.venueName}`}
-          loading="lazy"
-          className="glass-card h-48 w-full rounded-3xl"
-          src={`https://www.openstreetmap.org/export/embed.html?bbox=${activity.lng! - MAP_SPAN},${
-            activity.lat! - MAP_SPAN
-          },${activity.lng! + MAP_SPAN},${activity.lat! + MAP_SPAN}&layer=mapnik&marker=${
-            activity.lat
-          },${activity.lng}`}
+        <VenueMap
+          center={{ lat: activity.lat!, lng: activity.lng! }}
+          zoomed
+          focus={null}
+          label={`Map showing ${activity.venueName}`}
+          className="h-72 lg:h-[28rem]"
         />
       )}
     </header>
@@ -119,13 +124,17 @@ export function PartyBody({
   spotsLeft,
   live,
   waitlistNote,
+  hostFriend,
 }: {
   activity: Activity;
   attendees: User[];
   friends: User[];
   spotsLeft: number;
   live: boolean;
-  waitlistNote: string;
+  // Shown only to viewers who could join the waitlist; null hides it.
+  waitlistNote: string | null;
+  // The host's first name when the viewer is their friend.
+  hostFriend: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = activity.description.length > LONG_DESCRIPTION;
@@ -144,7 +153,8 @@ export function PartyBody({
             <span className="font-semibold text-ink">
               {activity.goingCount} going
             </span>{" "}
-            · {spotsLeft === 0 ? "no spots left" : `${spotsLeft} spots left`}
+            {live &&
+              ` · ${spotsLeft === 0 ? "no spots left" : `${plural(spotsLeft, "spot")} left`}`}
             {activity.waitlistCount > 0 &&
               ` · ${activity.waitlistCount} on waitlist`}
             {activity.interestedCount > 0 &&
@@ -156,6 +166,11 @@ export function PartyBody({
             {friends.map((f) => f.name.split(" ")[0]).join(", ")}{" "}
             {friends.length === 1 ? "is" : "are"} in. You know{" "}
             {friends.length === 1 ? "someone" : "people"} here.
+          </p>
+        )}
+        {friends.length === 0 && hostFriend && (
+          <p className="text-sm font-medium text-brand-700">
+            Hosted by your friend {hostFriend}.
           </p>
         )}
         <div
@@ -173,7 +188,7 @@ export function PartyBody({
             }}
           />
         </div>
-        {spotsLeft === 0 && live && (
+        {waitlistNote && (
           <p className="text-xs text-muted">Waitlist: {waitlistNote}</p>
         )}
       </section>
@@ -224,7 +239,9 @@ export function PartyBody({
         <p className="text-sm text-soft">
           {activity.priceP === 0
             ? "Free to join. You can leave any time."
-            : `Leave up to ${activity.refundCutoffHours} hours before the start for a full refund. After that there is no refund. If the host cancels, you are refunded in full.`}
+            : `Leave ${refundWindow(activity.refundCutoffHours)} for a full refund.${
+                activity.refundCutoffHours > 0 ? " After that there is no refund." : ""
+              } If the host cancels, you are refunded in full.`}
         </p>
       </section>
     </>
@@ -312,7 +329,9 @@ export function PartyCta({
     case "anonymous":
       return (
         <Button onClick={() => onSheet("login")} className="flex-1">
-          Log in to join
+          {activity.goingCount >= activity.capacity
+            ? "Log in to join the waitlist"
+            : "Log in to join"}
         </Button>
       );
     case "full":

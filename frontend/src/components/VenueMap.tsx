@@ -10,12 +10,16 @@ export interface VenueMapProps {
   zoomed: boolean;
   // Moves map and pin when it changes (a search result was picked).
   focus: (LatLng & { seq: number }) | null;
-  // The host tapped the map or dragged the pin.
-  onDrop: (lat: number, lng: number) => void;
+  // The host tapped the map or dragged the pin. Left out, the map is read-only:
+  // a fixed pin, as on the plan page.
+  onDrop?: (lat: number, lng: number) => void;
+  // Accessible name and size; the defaults suit the picker.
+  label?: string;
+  className?: string;
 }
 
 function Placeholder() {
-  return <div aria-hidden="true" className="h-64 w-full animate-pulse rounded-3xl border border-line" />;
+  return <div aria-hidden="true" className="h-72 w-full animate-pulse rounded-3xl border border-line" />;
 }
 
 // Each map library is its own chunk, loaded only for the provider in use.

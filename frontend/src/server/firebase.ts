@@ -5,15 +5,14 @@ import { config } from "@/server/config";
 import { fail } from "@/server/respond";
 
 // The only importer of firebase-admin (AGENTS-B rule 1). Firebase is used for
-// one thing: proving a phone number at login (PLATFORM_PLAN P1). With no
-// service account outside production, it talks to the Auth emulator, which
-// config.ts points the SDK at.
+// one thing: proving a phone number at login (PLATFORM_PLAN P1). Without a
+// service account, phone login is simply not configured.
 const APP_NAME = "noknok";
 
 function app(): App {
   const existing = getApps().find((a) => a.name === APP_NAME);
   if (existing) return existing;
-  const { serviceAccountJson, projectId, useEmulator } = config.firebase;
+  const { serviceAccountJson, projectId } = config.firebase;
   if (serviceAccountJson) {
     const account = JSON.parse(Buffer.from(serviceAccountJson, "base64").toString("utf8")) as {
       project_id: string;
@@ -32,7 +31,6 @@ function app(): App {
       APP_NAME,
     );
   }
-  if (useEmulator && projectId) return initializeApp({ projectId }, APP_NAME);
   fail("NOT_CONFIGURED", "Phone login is not configured");
 }
 

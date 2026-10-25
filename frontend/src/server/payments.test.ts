@@ -1,11 +1,10 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "@/lib/errors";
 
-// Gateways are real code talking to a stubbed fetch: Razorpay and PhonePe
-// answers are scripted per test, so every money path runs end to end
-// against MongoDB without network or keys.
+// The gateway is real code talking to a stubbed fetch: Razorpay answers are
+// scripted per test, so every money path runs end to end against MongoDB
+// without network or keys.
 vi.mock("next/headers", () => {
   const jar = new Map<string, string>();
   return {
@@ -19,8 +18,6 @@ vi.mock("next/headers", () => {
 
 const RZP_SECRET = "rzp_secret_for_tests";
 const RZP_WEBHOOK_SECRET = "rzp_webhook_secret";
-const PP_USER = "pp_user";
-const PP_PASS = "pp_pass";
 
 // ---------- scripted gateways ----------
 
@@ -28,8 +25,9 @@ const gateway = {
   orders: 0,
   orderBodies: [] as { amount: number }[],
   razorpayPayments: new Map<string, { id: string; status: string }[]>(),
-  phonepeStatus: new Map<string, "PENDING" | "COMPLETED" | "FAILED">(),
   refunds: [] as { url: string; body: unknown }[],
+  // How many upcoming refund calls Razorpay answers with a 5xx.
+  failRefunds: 0,
 };
 
 function reply(body: unknown, status = 200): Response {
@@ -45,26 +43,13 @@ async function fakeFetch(input: string | URL | Request, init?: RequestInit): Pro
   }
   const rzpPayments = /\/v1\/orders\/([^/]+)\/payments$/.exec(url);
   if (rzpPayments) return reply({ items: gateway.razorpayPayments.get(rzpPayments[1]!) ?? [] });
-  if (/\/v1\/payments\/[^/]+\/refund$/.test(url) || url.endsWith("/payments/v2/refund")) {
+  if (/\/v1\/payments\/[^/]+\/refund$/.test(url)) {
+    if (gateway.failRefunds > 0) {
+      gateway.failRefunds--;
+      return reply({ error: "gateway down" }, 502);
+    }
     gateway.refunds.push({ url, body });
-    return reply({ id: `rfnd_${gateway.refunds.length}`, refundId: `PPR${gateway.refunds.length}` });
-  }
-  if (url.endsWith("/v1/oauth/token")) {
-    return reply({ access_token: "pp_token", expires_at: Math.floor(Date.now() / 1000) + 3600 });
-  }
-  if (url.endsWith("/checkout/v2/pay")) {
-    return reply({ orderId: `OMO_${body.merchantOrderId}`, redirectUrl: `https://phonepe.test/pay/${body.merchantOrderId}` });
-  }
-  const ppStatus = /\/checkout\/v2\/order\/([^/]+)\/status$/.exec(url);
-  if (ppStatus) {
-    const mo = decodeURIComponent(ppStatus[1]!);
-    const state = gateway.phonepeStatus.get(mo) ?? "PENDING";
-    return reply({
-      orderId: `OMO_${mo}`,
-      state,
-      amount: 0,
-      paymentDetails: state === "COMPLETED" ? [{ transactionId: `T_${mo}`, state: "COMPLETED" }] : [],
-    });
+    return reply({ id: `rfnd_${gateway.refunds.length}` });
   }
   return reply({ error: `unexpected ${url}` }, 500);
 }
@@ -92,10 +77,6 @@ beforeAll(async () => {
     RAZORPAY_KEY_ID: "rzp_test_key",
     RAZORPAY_KEY_SECRET: RZP_SECRET,
     RAZORPAY_WEBHOOK_SECRET: RZP_WEBHOOK_SECRET,
-    PHONEPE_CLIENT_ID: "pp_client",
-    PHONEPE_CLIENT_SECRET: "pp_secret",
-    PHONEPE_WEBHOOK_USERNAME: PP_USER,
-    PHONEPE_WEBHOOK_PASSWORD: PP_PASS,
   });
   vi.stubGlobal("fetch", vi.fn(fakeFetch));
   m = {
@@ -118,6 +99,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   m.config.config.PAYMENT_PROVIDER = "razorpay";
+  gateway.failRefunds = 0;
 });
 
 let seq = 0;
@@ -168,6 +150,12 @@ async function deliverRazorpay(event: string, eventId: string, entity: Record<st
 }
 
 const joinOf = (id: string) => m.models.JoinModel.findById(id).lean();
+// A failed refund attempt holds a 10-minute claim; pretend it has lapsed.
+const ageRefundClaim = (joinId: string) =>
+  m.models.PaymentModel.updateMany(
+    { joinId },
+    { $set: { refundAttemptAt: new Date(Date.now() - 11 * 60 * 1000) } },
+  );
 const activityOf = (id: string) => m.models.ActivityModel.findById(id).lean();
 
 // ---------- Razorpay ----------
@@ -278,6 +266,209 @@ describe("razorpay", () => {
     expect((await activityOf(plan._id))?.goingCount).toBe(1);
   });
 
+  it("keeps the hold when one attempt fails: the joiner may retry in the sheet", async () => {
+    const plan = await paidPlan();
+    const joiner = await user();
+    const { join, handoff } = await m.joins.requestJoin(joiner, plan._id);
+    if (handoff.kind !== "modal") throw new Error("expected modal");
+    await deliverRazorpay("payment.failed", "evt_retry_1", { id: "pay_try1", order_id: handoff.orderId });
+    expect((await joinOf(join.id))?.status).toBe("pending_payment");
+    expect((await activityOf(plan._id))?.goingCount).toBe(1);
+    // The retry lands on the held spot, not an expired one.
+    await deliverRazorpay("payment.captured", "evt_retry_2", { id: "pay_try2", order_id: handoff.orderId });
+    expect((await joinOf(join.id))?.status).toBe("going");
+    expect((await activityOf(plan._id))?.goingCount).toBe(1);
+  });
+
+  it("refunds a capture for a join the joiner left while paying", async () => {
+    const plan = await paidPlan();
+    const joiner = await user();
+    const { join, handoff } = await m.joins.requestJoin(joiner, plan._id);
+    if (handoff.kind !== "modal") throw new Error("expected modal");
+    expect(await m.joins.leaveActivity(joiner, plan._id)).toBe(0);
+    expect((await joinOf(join.id))?.status).toBe("left");
+    expect((await activityOf(plan._id))?.goingCount).toBe(0);
+
+    const refundsBefore = gateway.refunds.length;
+    await deliverRazorpay("payment.captured", "evt_left", { id: "pay_left", order_id: handoff.orderId });
+    expect((await joinOf(join.id))?.status).toBe("left");
+    expect((await activityOf(plan._id))?.goingCount).toBe(0);
+    expect(gateway.refunds.length).toBe(refundsBefore + 1);
+    expect(gateway.refunds.at(-1)).toMatchObject({ body: { amount: join.ticketP + join.feeP } });
+    const payment = await m.models.PaymentModel.findOne({ joinId: join.id }).lean();
+    expect(payment).toMatchObject({ status: "refunded", providerPaymentId: "pay_left" });
+  });
+
+  it("handles a redelivered webhook again when the first handling threw", async () => {
+    const plan = await paidPlan(1);
+    const [late, other] = await Promise.all([user(), user()]);
+    const { join, handoff } = await m.joins.requestJoin(late, plan._id);
+    if (handoff.kind !== "modal") throw new Error("expected modal");
+    await m.models.JoinModel.updateOne({ _id: join.id }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
+    await m.joins.expirePendingJoins();
+    m.config.config.PAYMENT_PROVIDER = "fake";
+    await m.joins.requestJoin(other, plan._id);
+    m.config.config.PAYMENT_PROVIDER = "razorpay";
+
+    // Spot gone, so the capture must be refunded; Razorpay's refund API is down.
+    gateway.failRefunds = 1;
+    const entity = { id: "pay_redeliver", order_id: handoff.orderId };
+    const raw = JSON.stringify({ event: "payment.captured", payload: { payment: { entity } } });
+    const parsed = (await m.payments.parseWebhook("razorpay", raw, razorpayHeaders(raw, "evt_redeliver")))!;
+    await expect(m.payments.handleGatewayEvent("razorpay", parsed, raw)).rejects.toThrow(/502/);
+    let payment = await m.models.PaymentModel.findOne({ joinId: join.id }).lean();
+    expect(payment).toMatchObject({ status: "captured", refundOwedP: payment!.amountP });
+
+    // Razorpay redelivers the same event id: not a no-op this time.
+    await ageRefundClaim(join.id);
+    const refundsBefore = gateway.refunds.length;
+    await m.payments.handleGatewayEvent("razorpay", parsed, raw);
+    payment = await m.models.PaymentModel.findOne({ joinId: join.id }).lean();
+    expect(payment?.status).toBe("refunded");
+    expect(payment?.refundOwedP).toBeUndefined();
+    expect(gateway.refunds.length).toBe(refundsBefore + 1);
+    const event = await m.models.WebhookEventModel.findById("razorpay:evt_redeliver").lean();
+    expect(event?.processedAt).toBeInstanceOf(Date);
+    expect((await activityOf(plan._id))?.goingCount).toBe(1);
+  });
+
+  it("settles a late capture once when two deliveries race for the spot", async () => {
+    const plan = await paidPlan(3);
+    const joiner = await user();
+    const { join, handoff } = await m.joins.requestJoin(joiner, plan._id);
+    if (handoff.kind !== "modal") throw new Error("expected modal");
+    await m.models.JoinModel.updateOne({ _id: join.id }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
+    await m.joins.expirePendingJoins();
+    expect((await activityOf(plan._id))?.goingCount).toBe(0);
+
+    const entity = { id: "pay_race", order_id: handoff.orderId };
+    await Promise.all([
+      deliverRazorpay("payment.captured", "evt_race_a", entity),
+      deliverRazorpay("order.paid", "evt_race_b", entity),
+    ]);
+    expect((await joinOf(join.id))?.status).toBe("going");
+    expect((await activityOf(plan._id))?.goingCount).toBe(1);
+    expect(await m.models.JoinModel.countDocuments({ activityId: plan._id, status: "going" })).toBe(1);
+  });
+
+  it("gives the spot back once when leave is tapped twice", async () => {
+    const plan = await paidPlan();
+    const joiner = await user();
+    const { join, handoff } = await m.joins.requestJoin(joiner, plan._id);
+    if (handoff.kind !== "modal") throw new Error("expected modal");
+    await m.payments.verifyPayment(joiner, {
+      razorpay_order_id: handoff.orderId,
+      razorpay_payment_id: "pay_twice",
+      razorpay_signature: sign(RZP_SECRET, `${handoff.orderId}|pay_twice`),
+    });
+    const refundsBefore = gateway.refunds.length;
+    const results = await Promise.all([
+      m.joins.leaveActivity(joiner, plan._id),
+      m.joins.leaveActivity(joiner, plan._id),
+    ]);
+    expect(results.filter((r) => r > 0)).toHaveLength(1);
+    expect((await activityOf(plan._id))?.goingCount).toBe(0);
+    expect(gateway.refunds.length).toBe(refundsBefore + 1);
+    expect(join.ticketP).toBeGreaterThan(0);
+  });
+
+  it("records a refund the gateway refused and pays it on the next tick", async () => {
+    const plan = await paidPlan();
+    const joiner = await user();
+    const { join, handoff } = await m.joins.requestJoin(joiner, plan._id);
+    if (handoff.kind !== "modal") throw new Error("expected modal");
+    await m.payments.verifyPayment(joiner, {
+      razorpay_order_id: handoff.orderId,
+      razorpay_payment_id: "pay_owed",
+      razorpay_signature: sign(RZP_SECRET, `${handoff.orderId}|pay_owed`),
+    });
+    gateway.failRefunds = 1;
+    const owed = await m.joins.leaveActivity(joiner, plan._id);
+    expect(owed).toBe(join.ticketP + join.feeP);
+    expect((await joinOf(join.id))?.status).toBe("left");
+    let payment = await m.models.PaymentModel.findOne({ joinId: join.id }).lean();
+    expect(payment).toMatchObject({ status: "captured", refundOwedP: owed });
+
+    await ageRefundClaim(join.id);
+    const refundsBefore = gateway.refunds.length;
+    await m.payments.pollPendingPayments();
+    payment = await m.models.PaymentModel.findOne({ joinId: join.id }).lean();
+    expect(payment?.status).toBe("refunded");
+    expect(payment?.refundOwedP).toBeUndefined();
+    expect(gateway.refunds.at(-1)).toMatchObject({ body: { amount: owed } });
+    expect(gateway.refunds.length).toBe(refundsBefore + 1);
+  });
+
+  it("pays an owed refund once when two ticks overlap", async () => {
+    const plan = await paidPlan();
+    const joiner = await user();
+    const { join, handoff } = await m.joins.requestJoin(joiner, plan._id);
+    if (handoff.kind !== "modal") throw new Error("expected modal");
+    await m.payments.verifyPayment(joiner, {
+      razorpay_order_id: handoff.orderId,
+      razorpay_payment_id: "pay_overlap",
+      razorpay_signature: sign(RZP_SECRET, `${handoff.orderId}|pay_overlap`),
+    });
+    gateway.failRefunds = 1;
+    await m.joins.leaveActivity(joiner, plan._id);
+    // The failed attempt's claim is stale; both ticks see the owed refund.
+    await ageRefundClaim(join.id);
+    const refundsBefore = gateway.refunds.length;
+    await Promise.all([m.payments.pollPendingPayments(), m.payments.pollPendingPayments()]);
+    expect(gateway.refunds.length).toBe(refundsBefore + 1);
+    const payment = await m.models.PaymentModel.findOne({ joinId: join.id }).lean();
+    expect(payment?.status).toBe("refunded");
+    expect(payment?.refundAttemptAt).toBeUndefined();
+  });
+
+  it("does not retry an owed refund while an attempt is still in flight", async () => {
+    const plan = await paidPlan();
+    const joiner = await user();
+    const { join, handoff } = await m.joins.requestJoin(joiner, plan._id);
+    if (handoff.kind !== "modal") throw new Error("expected modal");
+    await m.payments.verifyPayment(joiner, {
+      razorpay_order_id: handoff.orderId,
+      razorpay_payment_id: "pay_inflight",
+      razorpay_signature: sign(RZP_SECRET, `${handoff.orderId}|pay_inflight`),
+    });
+    gateway.failRefunds = 1;
+    await m.joins.leaveActivity(joiner, plan._id); // claimed a moment ago, gateway said 502
+    const refundsBefore = gateway.refunds.length;
+    await m.payments.pollPendingPayments();
+    expect(gateway.refunds.length).toBe(refundsBefore); // claim still fresh: left alone
+    expect((await m.models.PaymentModel.findOne({ joinId: join.id }).lean())?.refundOwedP).toBeGreaterThan(0);
+  });
+
+  it("refunds the other attendees when one refund fails during a cancellation", async () => {
+    const plan = await paidPlan(5);
+    const joiners = await Promise.all([user(), user(), user()]);
+    for (const [i, joiner] of joiners.entries()) {
+      const { handoff } = await m.joins.requestJoin(joiner, plan._id);
+      if (handoff.kind !== "modal") throw new Error("expected modal");
+      await m.payments.verifyPayment(joiner, {
+        razorpay_order_id: handoff.orderId,
+        razorpay_payment_id: `pay_cancel_${i}`,
+        razorpay_signature: sign(RZP_SECRET, `${handoff.orderId}|pay_cancel_${i}`),
+      });
+    }
+    const activities = await import("@/server/activities");
+    const host = (await m.models.UserModel.findById(plan.hostId).lean())!;
+    gateway.failRefunds = 1;
+    const refundsBefore = gateway.refunds.length;
+    await activities.cancelActivity(host, plan._id);
+    expect(gateway.refunds.length).toBe(refundsBefore + 2);
+    const payments = await m.models.PaymentModel.find({ joinId: { $in: (await m.models.JoinModel.find({ activityId: plan._id }).lean()).map((j) => j._id) } }).lean();
+    expect(payments.filter((p) => p.status === "refunded")).toHaveLength(2);
+    expect(payments.filter((p) => p.status === "captured" && p.refundOwedP)).toHaveLength(1);
+    // The tick settles the one that was refused, once its claim has lapsed.
+    await m.models.PaymentModel.updateMany(
+      { joinId: { $in: payments.map((p) => p.joinId) } },
+      { $set: { refundAttemptAt: new Date(Date.now() - 11 * 60 * 1000) } },
+    );
+    await m.payments.pollPendingPayments();
+    expect(gateway.refunds.length).toBe(refundsBefore + 3);
+  });
+
   it("refunds ticket and fee through the gateway when leaving before the cutoff", async () => {
     const plan = await paidPlan();
     const joiner = await user();
@@ -294,82 +485,5 @@ describe("razorpay", () => {
     const payment = await m.models.PaymentModel.findOne({ joinId: join.id }).lean();
     expect(payment?.status).toBe("refunded");
     expect((await activityOf(plan._id))?.goingCount).toBe(0);
-  });
-});
-
-// ---------- PhonePe ----------
-
-function phonepeHeaders(user = PP_USER, pass = PP_PASS): Headers {
-  return new Headers({ authorization: createHash("sha256").update(`${user}:${pass}`).digest("hex") });
-}
-
-describe("phonepe", () => {
-  beforeEach(() => {
-    m.config.config.PAYMENT_PROVIDER = "phonepe";
-  });
-
-  it("redirects, reports pending while PhonePe decides, then settles", async () => {
-    const plan = await paidPlan();
-    const joiner = await user();
-    const { join, handoff } = await m.joins.requestJoin(joiner, plan._id);
-    expect(handoff.kind).toBe("redirect");
-    if (handoff.kind !== "redirect") return;
-    expect(handoff.url).toContain(handoff.merchantOrderId);
-
-    const pending = await m.payments.verifyPayment(joiner, { merchantOrderId: handoff.merchantOrderId });
-    expect(pending.state).toBe("pending");
-    // The hold stretches to 30 minutes from the join while PhonePe decides.
-    const held = await joinOf(join.id);
-    expect(held!.expiresAt!.getTime() - held!.createdAt.getTime()).toBeGreaterThanOrEqual(30 * 60 * 1000 - 1);
-
-    gateway.phonepeStatus.set(handoff.merchantOrderId, "COMPLETED");
-    const done = await m.payments.verifyPayment(joiner, { merchantOrderId: handoff.merchantOrderId });
-    expect(done).toEqual({ state: "captured", activityId: plan._id });
-    expect((await joinOf(join.id))?.status).toBe("going");
-  });
-
-  it("won't verify someone else's order", async () => {
-    const plan = await paidPlan();
-    const [joiner, stranger] = await Promise.all([user(), user()]);
-    const { handoff } = await m.joins.requestJoin(joiner, plan._id);
-    if (handoff.kind !== "redirect") throw new Error("expected redirect");
-    await expect(
-      m.payments.verifyPayment(stranger, { merchantOrderId: handoff.merchantOrderId }),
-    ).rejects.toBeInstanceOf(ApiError);
-  });
-
-  it("finishes in the job tick when the joiner never comes back", async () => {
-    const plan = await paidPlan();
-    const joiner = await user();
-    const { join, handoff } = await m.joins.requestJoin(joiner, plan._id);
-    if (handoff.kind !== "redirect") throw new Error("expected redirect");
-    gateway.phonepeStatus.set(handoff.merchantOrderId, "COMPLETED");
-    await m.payments.pollPendingPayments();
-    expect((await joinOf(join.id))?.status).toBe("going");
-  });
-
-  it("releases the spot and tells the joiner when the webhook says failed", async () => {
-    const plan = await paidPlan();
-    const joiner = await user();
-    const { join, handoff } = await m.joins.requestJoin(joiner, plan._id);
-    if (handoff.kind !== "redirect") throw new Error("expected redirect");
-    const raw = JSON.stringify({
-      event: "checkout.order.failed",
-      payload: { orderId: `OMO_${handoff.merchantOrderId}`, merchantOrderId: handoff.merchantOrderId, state: "FAILED" },
-    });
-    const event = await m.payments.parseWebhook("phonepe", raw, phonepeHeaders());
-    expect(event?.kind).toBe("failed");
-    await m.payments.handleGatewayEvent("phonepe", event!, raw);
-    await m.payments.handleGatewayEvent("phonepe", event!, raw); // redelivery
-
-    expect((await joinOf(join.id))?.status).toBe("expired");
-    expect((await activityOf(plan._id))?.goingCount).toBe(0);
-    const told = await m.models.NotificationModel.countDocuments({ userId: joiner._id, type: "payment_failed" });
-    expect(told).toBe(1);
-  });
-
-  it("drops a webhook with the wrong credentials", async () => {
-    const raw = JSON.stringify({ event: "checkout.order.completed", payload: { orderId: "X", state: "COMPLETED" } });
-    expect(await m.payments.parseWebhook("phonepe", raw, phonepeHeaders(PP_USER, "wrong"))).toBeNull();
   });
 });

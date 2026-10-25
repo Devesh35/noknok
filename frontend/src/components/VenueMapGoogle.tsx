@@ -20,7 +20,8 @@ function latLngOf(position: MarkerPosition): { lat: number; lng: number } | null
 
 // Google Maps with a draggable Advanced Marker; same behaviour as the
 // OpenStreetMap version.
-export function VenueMapGoogle({ center, zoomed, focus, onDrop }: VenueMapProps) {
+export function VenueMapGoogle({ center, zoomed, focus, onDrop, label, className }: VenueMapProps) {
+  const editable = onDrop !== undefined;
   const containerRef = useRef<HTMLDivElement>(null);
   const bits = useRef<GoogleBits | null>(null);
   const onDropRef = useRef(onDrop);
@@ -46,18 +47,20 @@ export function VenueMapGoogle({ center, zoomed, focus, onDrop }: VenueMapProps)
         map,
         position: center,
         content: pinElement("📍", false),
-        gmpDraggable: true,
+        gmpDraggable: editable,
         title: "Venue",
       });
-      marker.addListener("dragend", () => {
-        const at = latLngOf(marker.position);
-        if (at) onDropRef.current(at.lat, at.lng);
-      });
-      map.addListener("click", (event: google.maps.MapMouseEvent) => {
-        if (!event.latLng) return;
-        marker.position = event.latLng;
-        onDropRef.current(event.latLng.lat(), event.latLng.lng());
-      });
+      if (editable) {
+        marker.addListener("dragend", () => {
+          const at = latLngOf(marker.position);
+          if (at) onDropRef.current?.(at.lat, at.lng);
+        });
+        map.addListener("click", (event: google.maps.MapMouseEvent) => {
+          if (!event.latLng) return;
+          marker.position = event.latLng;
+          onDropRef.current?.(event.latLng.lat(), event.latLng.lng());
+        });
+      }
       bits.current = { map, marker };
     });
     return () => {
@@ -80,8 +83,8 @@ export function VenueMapGoogle({ center, zoomed, focus, onDrop }: VenueMapProps)
     <div
       ref={containerRef}
       role="application"
-      aria-label="Map: tap or drag the pin to the venue"
-      className="isolate h-64 w-full overflow-hidden rounded-3xl border border-line"
+      aria-label={label ?? "Map: tap or drag the pin to the venue"}
+      className={`isolate w-full overflow-hidden rounded-3xl border border-line ${className ?? "h-64"}`}
     />
   );
 }

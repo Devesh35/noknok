@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { apiFetch, safe } from "@/lib/api/client";
 import { invalidateAll, useApi } from "@/lib/api/query";
 import type { Result } from "@/lib/errors";
-import { confirmCode, emulatorCodeFor, forgetFirebaseSignIn, PhoneAuthError, sendCode } from "@/lib/firebase/auth";
+import { confirmCode, forgetFirebaseSignIn, PhoneAuthError, sendCode } from "@/lib/firebase/auth";
 import type { RegisterInput } from "@/lib/schemas";
 import { setTimeOffset } from "@/lib/time";
 import type { Me, SessionDto } from "@/lib/types";
@@ -51,15 +51,12 @@ function phoneAuthFailure(error: unknown): Extract<Result<never>, { ok: false }>
 }
 
 // Texts a login code (through Firebase). `containerId` is an always-mounted
-// element for the invisible reCAPTCHA. In development the emulator keeps the
-// code instead of texting it; `devCode` hands it to the screen.
-export async function sendLoginCode(
-  phone: string,
-  containerId: string,
-): Promise<Result<{ devCode: string | null }>> {
+// element for the invisible reCAPTCHA. Firebase's "phone numbers for testing"
+// take fixed codes and send no SMS.
+export async function sendLoginCode(phone: string, containerId: string): Promise<Result<null>> {
   try {
     await sendCode(phone, containerId);
-    return { ok: true, data: { devCode: await emulatorCodeFor(phone) } };
+    return { ok: true, data: null };
   } catch (error) {
     return phoneAuthFailure(error);
   }

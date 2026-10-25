@@ -167,6 +167,8 @@ export interface FriendRequest {
 export type NotificationType =
   | "joined"
   | "new_joiner"
+  | "joiner_left"
+  | "plan_updated"
   | "friend_request"
   | "friend_accepted"
   | "cancelled"

@@ -5,28 +5,30 @@ import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useState, ViewTransition } from "react";
 import { logOut, toggleBlock, useProfile, useSession } from "@/api";
 import { ActivityCard } from "@/components/ActivityCard";
-import { Avatar } from "@/components/Avatar";
 import { Button, buttonClass } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
+import { PlusIcon } from "@/components/icons";
 import { ReportSheet } from "@/components/ReportSheet";
 import { Segmented } from "@/components/Segmented";
+import { Sheet } from "@/components/Sheet";
 import { Skeleton } from "@/components/Skeleton";
 import { TicketCard } from "@/components/Ticket";
-import { VerifiedBadges } from "@/components/UserBits";
 import { formatInr } from "@/lib/format";
 import { now } from "@/lib/time";
+import { IS_PRODUCTION } from "@/lib/env";
 import { toast } from "@/lib/toast";
 import type { ActivityCardItem, EarningsRow, PayoutStage } from "@/lib/types";
-import { failed, FriendAction, FriendsPanel, LIST_GRID, relationshipOf } from "@/views/UserFriends";
+import { UserHeader } from "@/views/UserHeader";
+import { failed, FriendsPanel, LIST_GRID } from "@/views/UserFriends";
 
-type Tab = "hosting" | "joined" | "past" | "friends";
+type Tab = "hosting" | "joined" | "liked" | "past" | "friends";
 
 const TEXT_LINK = "inline-flex min-h-11 items-center text-brand-700 hover:underline";
 
 function ProfileSkeleton() {
   return (
-    <div className="space-y-4 px-4 py-6 md:px-8">
+    <div className="mx-auto max-w-7xl space-y-4 px-4 py-6 md:px-8">
       <Skeleton className="h-64 w-full rounded-[2rem]" />
       <Skeleton className="h-12 w-full rounded-full" />
       <Skeleton className="h-24 w-full rounded-3xl" />
@@ -54,7 +56,7 @@ function EarningsCard({ rows }: { rows: EarningsRow[] }) {
       </h2>
       <p className="text-xs text-muted">
         NokNok holds ticket money until the activity ends, then pays you out two days later.
-        Mock figures: no real money moves.
+        {!IS_PRODUCTION && " Mock figures: no real money moves."}
       </p>
       <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
         {stats.map((stat) => (
@@ -82,8 +84,10 @@ export function UserView({ handle }: { handle: string }) {
   const { data: session } = useSession();
   const { data, error, isPending, refetch } = useProfile(handle);
   const [tab, setTab] = useState<Tab>("hosting");
-  const [joinedView, setJoinedView] = useState<"plans" | "interested" | "tickets">("plans");
+  const [joinedView, setJoinedView] = useState<"plans" | "tickets">("plans");
   const [reporting, setReporting] = useState(false);
+  const [confirmBlock, setConfirmBlock] = useState(false);
+  const [blocking, setBlocking] = useState(false);
   // The tab control moves instantly; the list crossfades as a transition.
   const shownTab = useDeferredValue(tab);
 
@@ -110,6 +114,7 @@ export function UserView({ handle }: { handle: string }) {
         <div>
           {error?.code === "NOT_FOUND" ? (
             <EmptyState
+              page
               emoji="🤷"
               title="User not found"
               body={`There's no one here with the handle @${handle}.`}
@@ -121,6 +126,7 @@ export function UserView({ handle }: { handle: string }) {
             />
           ) : (
             <EmptyState
+              page
               emoji="📡"
               title="Couldn't load this profile"
               body={error?.message}
@@ -132,9 +138,9 @@ export function UserView({ handle }: { handle: string }) {
     );
   }
 
-  const { user: profile, stats, isOwn, relationship, friends, mutual } = data;
+  const { user: profile, isOwn, relationship, friends } = data;
   const firstName = profile.name.split(" ")[0];
-  const lists: Record<Exclude<Tab, "friends">, ActivityCardItem[]> = {
+  const lists: Record<Exclude<Tab, "friends" | "liked">, ActivityCardItem[]> = {
     hosting: data.hosting,
     joined: data.joined,
     past: data.past,
@@ -142,7 +148,7 @@ export function UserView({ handle }: { handle: string }) {
   const { tickets, interested, earnings } = data;
 
   const who = isOwn ? "You haven't" : `${firstName} hasn't`;
-  const empty: Record<Exclude<Tab, "friends">, { emoji: string; title: string }> = {
+  const empty: Record<Exclude<Tab, "friends" | "liked">, { emoji: string; title: string }> = {
     hosting: { emoji: "📣", title: `${who} got anything coming up to host` },
     joined: data.joinedHidden
       ? { emoji: "🙈", title: `${data.user.name} keeps their plans private` }
@@ -150,17 +156,12 @@ export function UserView({ handle }: { handle: string }) {
     past: { emoji: "🕰️", title: "No past activities yet" },
   };
 
-  const statRows = [
-    { label: "Hosted", value: String(stats.hostedCount) },
-    { label: "Friends", value: String(friends.length) },
-    { label: "Rating", value: stats.rating > 0 ? `★ ${stats.rating.toFixed(1)}` : "New" },
-    { label: "Shows up", value: stats.attendance === null ? "New" : `${stats.attendance}%` },
-  ];
-  const tabs: { value: Tab; label: string }[] = [
-    { value: "hosting", label: `Hosting (${lists.hosting.length})` },
-    { value: "joined", label: `Joined (${lists.joined.length})` },
-    { value: "past", label: `Past (${lists.past.length})` },
-    { value: "friends", label: `Friends (${friends.length})` },
+  const tabs: { value: Tab; label: string; count: number }[] = [
+    { value: "hosting", label: "Hosting", count: lists.hosting.length },
+    { value: "joined", label: "Joined", count: lists.joined.length },
+    ...(isOwn ? [{ value: "liked" as const, label: "Liked", count: interested.length }] : []),
+    { value: "past", label: "Past", count: lists.past.length },
+    { value: "friends", label: "Friends", count: friends.length },
   ];
 
   const logOutAndLeave = async () => {
@@ -168,8 +169,12 @@ export function UserView({ handle }: { handle: string }) {
     router.push("/");
   };
 
+  // Blocking asks first; unblocking applies straight away.
   const block = async () => {
+    setBlocking(true);
     const result = await toggleBlock(profile.id);
+    setBlocking(false);
+    setConfirmBlock(false);
     if (failed(result) || !result.ok) return;
     toast(result.data.blocked ? `Blocked ${profile.name}` : `Unblocked ${profile.name}`);
   };
@@ -177,7 +182,7 @@ export function UserView({ handle }: { handle: string }) {
   let panel;
   if (shownTab === "friends") {
     panel = <FriendsPanel profile={data} viewer={viewer} autoAccept={autoAccept} />;
-  } else if (shownTab === "joined" && joinedView === "interested" && isOwn) {
+  } else if (shownTab === "liked") {
     panel =
       interested.length === 0 ? (
         <EmptyState
@@ -221,6 +226,7 @@ export function UserView({ handle }: { handle: string }) {
                 href={shownTab === "hosting" ? "/host/new" : "/"}
                 className={buttonClass("primary")}
               >
+                <PlusIcon className="h-4 w-4" />
                 {shownTab === "hosting" ? "Host something" : "Explore"}
               </Link>
             )
@@ -256,75 +262,16 @@ export function UserView({ handle }: { handle: string }) {
 
   return (
     <ViewTransition key="content" enter="fade-in" default="none">
-      <div className="px-4 py-6 md:px-8">
-        <header className="glass-card animate-rise overflow-hidden rounded-[2rem]">
-          <div className="relative h-28 overflow-hidden bg-linear-to-r from-brand-600 to-accent">
-            <span className="absolute -top-10 left-1/4 h-32 w-32 rounded-full bg-white/30 blur-2xl" />
-            <span className="absolute right-0 -bottom-12 h-32 w-48 rounded-full bg-black/15 blur-2xl" />
-          </div>
-          <div className="-mt-10 space-y-4 px-4 pb-4">
-            <Avatar user={profile} size="lg" className="relative animate-pop shadow-lg ring-4" />
-            <div className="min-w-0">
-              <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-extrabold tracking-tight text-ink">
-                <span className="truncate">{profile.name}</span>
-                <VerifiedBadges user={profile} />
-              </h1>
-              <p className="truncate text-sm text-muted">
-                @{profile.handle} · {profile.city}
-              </p>
-              {mutual.length > 0 && (
-                <p className="text-sm font-medium text-brand-700">
-                  {mutual.length} mutual friend{mutual.length === 1 ? "" : "s"}:{" "}
-                  {mutual.map((u) => u.name.split(" ")[0]).join(", ")}
-                </p>
-              )}
-            </div>
-            <p className="text-body">{profile.bio}</p>
-            <dl className="grid grid-cols-4 rounded-3xl border border-line bg-surface/50 py-3 text-center">
-              {statRows.map((stat) => (
-                <div key={stat.label}>
-                  <dd className="text-lg font-bold text-ink">{stat.value}</dd>
-                  <dt className="text-xs text-muted">{stat.label}</dt>
-                </div>
-              ))}
-            </dl>
-            <div className="flex flex-wrap gap-2">
-              {isOwn ? (
-                <>
-                  <Link href="/settings" className={buttonClass("secondary", "flex-1")}>
-                    Edit profile &amp; settings
-                  </Link>
-                  <Button variant="ghost" onClick={logOutAndLeave}>
-                    Log out
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <FriendAction
-                    viewer={viewer}
-                    other={profile}
-                    relationship={
-                      viewer
-                        ? relationshipOf(viewer.id, relationship.isFriend, relationship.request)
-                        : { kind: "none" }
-                    }
-                    autoAccept={autoAccept}
-                  />
-                  {viewer && (
-                    <Button variant="ghost" onClick={block}>
-                      {relationship.blocked ? "Unblock" : "Block"}
-                    </Button>
-                  )}
-                  {viewer && (
-                    <Button variant="ghost" onClick={() => setReporting(true)}>
-                      Report
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </header>
+      <div className="mx-auto max-w-7xl px-4 py-6 md:px-8">
+        <UserHeader
+          data={data}
+          viewer={viewer}
+          autoAccept={autoAccept}
+          blocking={blocking && !confirmBlock}
+          onLogOut={logOutAndLeave}
+          onBlock={() => (relationship.blocked ? block() : setConfirmBlock(true))}
+          onReport={() => setReporting(true)}
+        />
 
         {isOwn && <EarningsCard rows={earnings} />}
 
@@ -333,19 +280,13 @@ export function UserView({ handle }: { handle: string }) {
           value={tab}
           onChange={setTab}
           options={tabs}
-          className="mt-6"
+          className="mt-5"
         />
 
         {isOwn && shownTab === "joined" && (
           <div className="flex flex-wrap gap-2 pt-4">
             <Chip selected={joinedView === "plans"} onClick={() => setJoinedView("plans")}>
               Going
-            </Chip>
-            <Chip
-              selected={joinedView === "interested"}
-              onClick={() => setJoinedView("interested")}
-            >
-              Interested ({interested.length})
             </Chip>
             <Chip selected={joinedView === "tickets"} onClick={() => setJoinedView("tickets")}>
               My tickets ({tickets.length})
@@ -367,6 +308,27 @@ export function UserView({ handle }: { handle: string }) {
             targetId={profile.id}
             name={profile.name}
           />
+        )}
+        {!isOwn && (
+          <Sheet
+            open={confirmBlock}
+            onClose={() => setConfirmBlock(false)}
+            title={`Block ${profile.name}?`}
+          >
+            <p className="text-sm text-soft">
+              They won&apos;t be able to see your plans or send you friend
+              requests, and you won&apos;t see theirs. You can unblock them from
+              Settings.
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              <Button onClick={block} loading={blocking}>
+                Block
+              </Button>
+              <Button variant="secondary" onClick={() => setConfirmBlock(false)}>
+                Cancel
+              </Button>
+            </div>
+          </Sheet>
         )}
       </div>
     </ViewTransition>

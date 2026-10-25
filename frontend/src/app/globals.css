@@ -11,7 +11,7 @@
   --color-surface: #161625; /* cards, inputs */
   --color-surface-hi: #1d1c30; /* card hover */
   --color-line: #29283d; /* borders */
-  --color-brand-600: #8b5cf6; /* primary: fills, borders, focus rings */
+  --color-brand-600: #7f4ff0; /* primary: fills, borders, focus rings (white text on it: 4.9:1) */
   --color-brand-500: #a855f7; /* primary hover */
   --color-brand-700: #c4b5fd; /* primary as text and links (lightened to stay readable) */
   --color-accent: #22d3ee; /* secondary accent: cyan */

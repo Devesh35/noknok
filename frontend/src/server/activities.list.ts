@@ -1,6 +1,5 @@
 import "server-only";
 import type { QueryFilter } from "mongoose";
-import { isSameDay } from "@/lib/format";
 import type { ActivityListQuery } from "@/lib/schemas";
 import { DAY_MS } from "@/lib/time";
 import { CATEGORIES_LIST, type ActivityCardItem, type Category } from "@/lib/types";
@@ -11,24 +10,60 @@ import { usersByIds } from "@/server/friends";
 import { ActivityModel, type ActivityDoc, type UserDoc } from "@/server/models";
 import { escapeRegex } from "@/server/users";
 
-// Saturday or Sunday within the coming week.
-function isThisWeekend(startMs: number): boolean {
-  const day = new Date(startMs).getDay();
-  return (day === 0 || day === 6) && startMs < now() + 8 * DAY_MS;
+// Days follow the users' calendar, not the server's: Vercel runs in UTC, where
+// a Saturday 2am plan in Mumbai is still Friday. Only Indian cities for now.
+const TIME_ZONE = "Asia/Kolkata";
+const dayParts = new Intl.DateTimeFormat("en-US", {
+  timeZone: TIME_ZONE,
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  second: "numeric",
+  hourCycle: "h23",
+});
+
+// Midnight (in TIME_ZONE) of the day containing `ms`, as a UTC instant.
+export function startOfDay(ms: number): number {
+  const p = Object.fromEntries(dayParts.formatToParts(ms).map((part) => [part.type, Number(part.value)]));
+  const wallClock = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  const offset = wallClock - Math.floor(ms / 1000) * 1000;
+  return Date.UTC(p.year, p.month - 1, p.day) - offset;
 }
 
-function matchesDate(startMs: number, filter: ActivityListQuery["date"]): boolean {
+// 0 = Sunday … 6 = Saturday, in TIME_ZONE.
+function weekday(ms: number): number {
+  // startOfDay is a true midnight there, so the UTC weekday of noon that day is right.
+  return new Date(startOfDay(ms) + 12 * 60 * 60 * 1000).getUTCDay();
+}
+
+type Range = { $gte?: Date; $lt?: Date; $lte?: Date };
+
+// The date chip as a startsAt condition, so the database pages correctly: a
+// filter applied after `limit` would hand back an empty page while matching
+// plans sit further down the sort.
+export function dateRanges(filter: ActivityListQuery["date"], nowMs: number): Range[] {
+  const today = startOfDay(nowMs);
   switch (filter) {
     case "any":
-      return true;
+      return [];
     case "today":
-      return isSameDay(new Date(startMs), new Date(now()));
+      return [{ $gte: new Date(today), $lt: new Date(today + DAY_MS) }];
     case "tomorrow":
-      return isSameDay(new Date(startMs), new Date(now() + DAY_MS));
-    case "weekend":
-      return isThisWeekend(startMs);
+      return [{ $gte: new Date(today + DAY_MS), $lt: new Date(today + 2 * DAY_MS) }];
+    case "weekend": {
+      // Saturday and Sunday within the coming week (today included if it is one).
+      const ranges: Range[] = [];
+      for (let d = 0; d < 8; d++) {
+        const dayStart = today + d * DAY_MS;
+        const day = weekday(dayStart);
+        if (day === 0 || day === 6) ranges.push({ $gte: new Date(dayStart), $lt: new Date(dayStart + DAY_MS) });
+      }
+      return ranges;
+    }
     case "week":
-      return startMs <= now() + 7 * DAY_MS;
+      return [{ $lte: new Date(nowMs + 7 * DAY_MS) }];
   }
 }
 
@@ -63,14 +98,16 @@ export async function listActivities(
     filter.$or = [{ title: pattern }, { description: pattern }, { venueName: pattern }, { tags: pattern }];
   }
   if (viewer?.blockedIds.length) filter.hostId = { ...(query.hostId ? { $eq: query.hostId } : {}), $nin: viewer.blockedIds };
+  const ranges = dateRanges(query.date, now());
+  if (ranges.length === 1) filter.startsAt = ranges[0];
+  else if (ranges.length) filter.$and = ranges.map((startsAt) => ({ startsAt }));
 
-  // The date filter follows the calendar, so it is applied after the query;
-  // fetching a little more than the page keeps the filtered page full.
-  const docs = await ActivityModel.find(filter)
+  // Blocks, locks and the category chip are still applied in code below;
+  // fetching more than the page keeps the filtered page full.
+  const dated = await ActivityModel.find(filter)
     .sort({ startsAt: 1 })
     .limit(query.limit * 4)
     .lean();
-  const dated = docs.filter((doc) => matchesDate(doc.startsAt.getTime(), query.date));
 
   // Hosts who blocked the viewer don't appear to them.
   const hosts = await usersByIds(dated.map((d) => d.hostId));

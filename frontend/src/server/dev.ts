@@ -12,9 +12,10 @@ import { ActivityModel, UserModel } from "@/server/models";
 import { fail } from "@/server/respond";
 import { adoptAnonInvites } from "@/server/users";
 
-// The hidden /dev page. None of this exists in production.
+// The hidden /dev page. None of this exists in production, and against a
+// real database it has to be switched on (config.devTools).
 function guard() {
-  if (config.isProd) fail("FORBIDDEN", "Not available");
+  if (!config.devTools) fail("FORBIDDEN", "Not available");
 }
 
 export async function devDto(): Promise<DevDto> {

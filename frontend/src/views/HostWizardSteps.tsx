@@ -16,7 +16,19 @@ import type {
 } from "@/lib/types";
 
 // Versioned: drafts saved before the map/duration change would not load.
-export const DRAFT_KEY = "noknok.draft.activity.v5";
+// Keyed by host so a shared phone never shows one person's half-written plan
+// (venue, address) to whoever logs in next.
+export function draftKeys(hostId: string): { form: string; step: string } {
+  return {
+    form: `noknok.draft.activity.v6.${hostId}`,
+    // The step the draft was left on, restored only if the steps before it pass.
+    step: `noknok.draft.step.v2.${hostId}`,
+  };
+}
+export const TITLE_MAX = 60;
+// Mirrors the server's activityInput limits (src/lib/schemas.ts).
+export const PRICE_MAX_RUPEES = 100_000;
+export const CAPACITY_MAX = 500;
 export const STEPS = [
   "Basics",
   "Category & photo",
@@ -145,12 +157,28 @@ export function formFrom(activity: Activity): Form {
   };
 }
 
-export function loadDraft(): Partial<Form> {
+export function loadDraft(hostId: string): Partial<Form> {
   try {
-    return JSON.parse(window.localStorage.getItem(DRAFT_KEY) ?? "{}") as Partial<Form>;
+    return JSON.parse(window.localStorage.getItem(draftKeys(hostId).form) ?? "{}") as Partial<Form>;
   } catch {
     return {};
   }
+}
+
+// The saved step, stepped back to the first earlier step that doesn't pass.
+export function loadDraftStep(hostId: string, form: Form): number {
+  let saved = 0;
+  try {
+    saved = Number(window.localStorage.getItem(draftKeys(hostId).step) ?? 0);
+  } catch {
+    return 0;
+  }
+  if (!Number.isInteger(saved) || saved < 0) return 0;
+  const target = Math.min(saved, LAST_STEP);
+  for (let step = 0; step < target; step++) {
+    if (Object.keys(validate(step, form, 0)).length > 0) return step;
+  }
+  return target;
 }
 
 export function validate(step: number, form: Form, minCapacity: number): FormErrors {
@@ -175,8 +203,11 @@ export function validate(step: number, form: Form, minCapacity: number): FormErr
     const capacity = Number(form.capacity);
     if (form.price === "" || !Number.isInteger(price) || price < 0) {
       errors.price = "Enter a whole number of rupees, or 0 for free";
+    } else if (price > PRICE_MAX_RUPEES) {
+      errors.price = "The most a ticket can cost is ₹1,00,000";
     }
     if (!Number.isInteger(capacity) || capacity < 1) errors.capacity = "Enter at least 1 spot";
+    else if (capacity > CAPACITY_MAX) errors.capacity = `A plan can have at most ${CAPACITY_MAX} spots`;
     else if (capacity < minCapacity) {
       errors.capacity = `${minCapacity} people have already joined, so it can't be lower`;
     }

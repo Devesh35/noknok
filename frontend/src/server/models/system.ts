@@ -6,8 +6,8 @@ import type { DevSettings, FeeModel } from "@/lib/types";
 
 // ---------- payments ----------
 
-// One per gateway order. merchantOrderId is ours (PhonePe keys everything on
-// it, Razorpay gets it as the receipt); provider* ids are the gateway's.
+// One per gateway order. merchantOrderId is ours (Razorpay gets it as the
+// receipt); provider* ids are the gateway's.
 export interface PaymentDoc {
   _id: string;
   joinId: string;
@@ -15,11 +15,15 @@ export interface PaymentDoc {
   merchantOrderId: string;
   providerOrderId: string;
   providerPaymentId?: string;
-  // Redirect gateways: where to send the joiner if they come back to pay.
-  redirectUrl?: string;
   amountP: number;
   status: "created" | "captured" | "failed" | "refunded" | "partially_refunded";
   providerRefundId?: string;
+  // Set while a refund is owed but the gateway hasn't confirmed it; cleared
+  // when it does. The job tick retries these.
+  refundOwedP?: number;
+  // When the current refund attempt started; a lease between overlapping
+  // ticks and requests (payments.ts claimRefund).
+  refundAttemptAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,10 +36,11 @@ const paymentSchema = new Schema<PaymentDoc>(
     merchantOrderId: { type: String, required: true },
     providerOrderId: { type: String, required: true },
     providerPaymentId: String,
-    redirectUrl: String,
     amountP: { type: Number, required: true },
     status: { type: String, required: true },
     providerRefundId: String,
+    refundOwedP: Number,
+    refundAttemptAt: Date,
   },
   opts,
 );
@@ -73,6 +78,9 @@ const webhookEventSchema = new Schema<WebhookEventDoc>(
   },
   { strict: "throw", versionKey: false, collection: "webhook_events" },
 );
+// Raw payloads are for debugging a dispute, not for keeping; gateways stop
+// redelivering long before this.
+webhookEventSchema.index({ receivedAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 export const WebhookEventModel = model<WebhookEventDoc>("WebhookEvent", webhookEventSchema);
 
 // ---------- payouts ----------

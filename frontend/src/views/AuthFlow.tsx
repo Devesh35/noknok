@@ -1,13 +1,12 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { registerUser, sendLoginCode, useSession, verifyLoginCode, type Result } from "@/api";
 import { Logo } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Checkbox, Input } from "@/components/Field";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
-import { USES_EMULATOR } from "@/lib/firebase/client";
 import { toast } from "@/lib/toast";
 import { CITIES, type City } from "@/lib/types";
 
@@ -26,12 +25,22 @@ const HEADINGS: Record<Step, { title: string; body: string }> = {
   details: { title: "Almost there", body: "Tell us who you are so hosts know who's coming." },
 };
 
-// Only allow in-app paths as the post-login destination.
+// Only allow in-app paths as the post-login destination. Browsers drop tabs and
+// newlines from URLs ("/\t/evil.com" becomes "//evil.com"), so control
+// characters are refused and the result must resolve to our own origin.
 function safeNext(next: string | null): string | null {
-  return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")
-    ? next
-    : null;
+  if (!next || !next.startsWith("/") || /[\u0000-\u001f\u007f\\]/.test(next)) return null;
+  try {
+    // A fixed base: this also runs during server rendering, where there is no window.
+    const base = "https://noknok.invalid";
+    const url = new URL(next, base);
+    return url.origin === base ? url.pathname + url.search + url.hash : null;
+  } catch {
+    return null;
+  }
 }
+
+const RESEND_SECONDS = 30;
 
 // What to say under the field for a failed call; null means toast it instead.
 function inlineMessage(result: Extract<Result<unknown>, { ok: false }>): string | null {
@@ -65,8 +74,21 @@ export function AuthFlow() {
   const [submitted, setSubmitted] = useState(false);
   const [fieldError, setFieldError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
 
   const done = () => router.replace(next ?? "/u/me");
+
+  // Already logged in: nothing to do here.
+  const loggedIn = !!session?.user;
+  useEffect(() => {
+    if (loggedIn && step === "phone") router.replace(next ?? "/u/me");
+  }, [loggedIn, step, next, router]);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
 
   const errors = {
     phone: /^\d{10}$/.test(phone) ? "" : "Enter a 10-digit phone number",
@@ -92,12 +114,12 @@ export function AuthFlow() {
       fail(result);
       return;
     }
+    if (step === "otp") toast(`New code sent to +91 ${phone}`);
     setOtp("");
     setFieldError("");
     setSubmitted(false);
+    setResendIn(RESEND_SECONDS);
     setStep("otp");
-    // The Firebase emulator keeps the code instead of texting it.
-    if (result.data.devCode) toast(`Dev mode: your code is ${result.data.devCode}`);
   };
 
   const verify = async () => {
@@ -245,12 +267,6 @@ export function AuthFlow() {
           <Button variant="secondary" disabled className="w-full">
             Continue with Google (coming soon)
           </Button>
-          {USES_EMULATOR && (
-            <p className="mt-6 rounded-2xl bg-brand-600/8 p-3 text-center text-xs text-soft">
-              Development: no SMS is sent. The Firebase emulator keeps the code and it shows up
-              here as a notice. A new number creates a fresh account.
-            </p>
-          )}
         </>
       )}
 
@@ -259,9 +275,10 @@ export function AuthFlow() {
           <button
             type="button"
             onClick={sendCode}
-            className="min-h-11 text-brand-700 hover:underline"
+            disabled={busy || resendIn > 0}
+            className="min-h-11 text-brand-700 hover:underline disabled:text-faint disabled:no-underline"
           >
-            Resend code
+            {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
           </button>
           <button
             type="button"

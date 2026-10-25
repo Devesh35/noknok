@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CATEGORY_META } from "@/lib/activity";
+import { CATEGORY_META, coverEmoji } from "@/lib/activity";
 import type { Activity } from "@/lib/types";
 
 // Activity cover: the photo from coverUrl over a category gradient. The
@@ -12,7 +12,8 @@ export function Cover({
   emojiClassName = "text-5xl",
   float = false,
 }: {
-  activity: Pick<Activity, "category" | "coverUrl" | "title">;
+  activity: Pick<Activity, "category" | "coverUrl" | "title"> &
+    Partial<Pick<Activity, "subcategory">>;
   className?: string;
   emojiClassName?: string;
   float?: boolean;
@@ -47,7 +48,7 @@ export function Cover({
             <span
               className={`block drop-shadow-lg transition-transform duration-500 ease-spring group-hover:scale-125 group-hover:-rotate-6 ${emojiClassName}`}
             >
-              {meta.emoji}
+              {coverEmoji(activity.category, activity.subcategory)}
             </span>
           </span>
         </>

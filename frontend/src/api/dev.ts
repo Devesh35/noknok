@@ -33,6 +33,11 @@ export function endActivityNow(id: string) {
   return post<null>("/dev/end", { id });
 }
 
+// Adds sample hosts and upcoming events. Safe to repeat.
+export function seedTestEvents() {
+  return post<{ hosts: number; events: number }>("/dev/seed");
+}
+
 export function resetDemo() {
   return post<null>("/dev/reset");
 }

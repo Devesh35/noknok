@@ -10,7 +10,12 @@ import { CATEGORIES, CATEGORY_META, SUBCATEGORIES, VISIBILITIES, VISIBILITY_META
 import { breakdownForPrice } from "@/lib/fees";
 import { formatInr, rupeesToPaise } from "@/lib/format";
 import type { DevSettings, WaitlistMode } from "@/lib/types";
-import { DURATION_OPTIONS, type Form, type FormErrors } from "@/views/HostWizardSteps";
+import {
+  DURATION_OPTIONS,
+  TITLE_MAX,
+  type Form,
+  type FormErrors,
+} from "@/views/HostWizardSteps";
 
 const WAITLIST_OPTIONS: SelectOption<WaitlistMode>[] = [
   { value: "auto", label: "Next in line gets the spot automatically" },
@@ -35,11 +40,14 @@ export function StepBasics({ form, patch, errors }: StepProps) {
       <Input
         label="Title"
         value={form.title}
-        maxLength={60}
+        maxLength={TITLE_MAX}
         onChange={(event) => patch({ title: event.target.value })}
         placeholder="Sunday 5-a-side football"
         error={errors.title}
       />
+      <p className="-mt-3 text-right text-xs text-muted" aria-live="polite">
+        {form.title.length}/{TITLE_MAX}
+      </p>
       <Textarea
         label="Description"
         hint="What's the plan, who is it for, and what's included? We'll suggest a category from this."

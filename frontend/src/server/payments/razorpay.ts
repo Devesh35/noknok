@@ -112,7 +112,12 @@ export const razorpayGateway: PaymentGateway = {
     const secret = config.RAZORPAY_WEBHOOK_SECRET;
     const signature = headers.get("x-razorpay-signature");
     const eventId = headers.get("x-razorpay-event-id");
-    if (!secret || !signature || !eventId || !hmacMatches(secret, rawBody, signature)) return null;
+    if (!secret || !signature || !eventId || !hmacMatches(secret, rawBody, signature)) {
+      // Dropped with a 200, so this line is the only trace of a wrong
+      // RAZORPAY_WEBHOOK_SECRET or someone probing the endpoint.
+      console.warn("Razorpay webhook rejected", { eventId, configured: Boolean(secret), signed: Boolean(signature) });
+      return null;
+    }
     const body = JSON.parse(rawBody) as WebhookBody;
     const payment = body.payload?.payment?.entity;
     const refund = body.payload?.refund?.entity;

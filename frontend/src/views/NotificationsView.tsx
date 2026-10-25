@@ -21,6 +21,8 @@ const TRANSIENT = new Set<ErrorCode>(["NETWORK", "SERVER", "RATE_LIMITED"]);
 const ICONS: Record<NotificationType, string> = {
   joined: "🎟️",
   new_joiner: "🙌",
+  joiner_left: "👋",
+  plan_updated: "✏️",
   friend_request: "👋",
   friend_accepted: "🤝",
   cancelled: "🚫",
@@ -54,6 +56,7 @@ export function NotificationsView() {
   if (!me) {
     return (
       <EmptyState
+        page
         emoji="🔔"
         title="Log in to see your alerts"
         body="Join confirmations, friend requests and reminders show up here."
@@ -69,6 +72,7 @@ export function NotificationsView() {
   if (!data) {
     return (
       <EmptyState
+        page
         emoji="📡"
         title="Couldn't load your alerts"
         body={error?.message}

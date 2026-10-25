@@ -57,6 +57,7 @@ export function NotFound() {
     <ViewTransition key="missing" enter="fade-in" default="none">
       <div>
         <EmptyState
+        page
           emoji="🕵️"
           title="Activity not found"
           body="This link may be wrong, or the activity was removed."

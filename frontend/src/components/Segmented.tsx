@@ -2,7 +2,9 @@ interface SegmentedProps<T extends string> {
   label: string;
   value: T;
   onChange: (value: T) => void;
-  options: { value: T; label: string }[];
+  // `count` sits after the label on the same line, dimmer; it is hidden on very
+  // narrow phones so five tabs still fit.
+  options: { value: T; label: string; count?: number }[];
   // id prefix for aria-controls / aria-labelledby wiring with a tab panel
   idPrefix?: string;
   className?: string;
@@ -45,11 +47,14 @@ export function Segmented<T extends string>({
           aria-selected={value === option.value}
           aria-controls={`${idPrefix}-panel`}
           onClick={() => onChange(option.value)}
-          className={`relative min-h-11 truncate rounded-full px-1 text-sm font-semibold transition-colors duration-300 ${
+          className={`relative flex min-h-11 items-center justify-center gap-1 rounded-full px-0.5 text-[13px] leading-tight font-semibold transition-colors md:px-1 md:text-sm duration-300 ${
             value === option.value ? "text-white" : "text-soft hover:text-ink"
           }`}
         >
-          {option.label}
+          <span className="min-w-0 truncate">{option.label}</span>
+          {option.count !== undefined && (
+            <span className="text-xs font-medium opacity-70 max-[379px]:hidden">{option.count}</span>
+          )}
         </button>
       ))}
     </div>

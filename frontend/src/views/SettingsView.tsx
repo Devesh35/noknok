@@ -26,6 +26,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { UserRow, VerifiedBadges } from "@/components/UserBits";
 import { CATEGORIES, CATEGORY_META } from "@/lib/activity";
 import { isStandalone, promptInstall, useCanInstall } from "@/lib/device";
+import { IS_PRODUCTION } from "@/lib/env";
 import { toast } from "@/lib/toast";
 import { CITIES, type Category, type City, type Me, type UserSettings } from "@/lib/types";
 
@@ -165,9 +166,17 @@ function ProfileForm({ user }: { user: Me }) {
         prefix="@"
         value={handle}
         autoCapitalize="none"
+        maxLength={20}
         onChange={(event) => setHandle(event.target.value.toLowerCase().trim())}
-        error={submitted && errors.handle ? errors.handle : undefined}
+        // Live once the handle differs from the saved one: format first, then
+        // the debounced availability check.
+        error={(submitted || handle !== user.handle) && errors.handle ? errors.handle : undefined}
       />
+      {handle !== user.handle && !errors.handle && (
+        <p className="-mt-2 text-xs text-muted" aria-live="polite">
+          {available === null ? "Checking…" : `@${handle} is available`}
+        </p>
+      )}
       <Textarea label="Bio" value={bio} rows={3} maxLength={160} onChange={(e) => setBio(e.target.value)} />
       <SelectMenu variant="field" label="City" value={city} onChange={setCity} options={CITY_OPTIONS} />
       <div>
@@ -234,6 +243,7 @@ export function SettingsView() {
   if (!user) {
     return (
       <EmptyState
+        page
         emoji="⚙️"
         title="Log in to change settings"
         action={
@@ -367,9 +377,11 @@ export function SettingsView() {
         <Button variant="secondary" className="w-full" onClick={install}>
           Add NokNok to my home screen
         </Button>
-        <Link href="/dev" className={buttonClass("ghost", "w-full")}>
-          Developer tools
-        </Link>
+        {!IS_PRODUCTION && (
+          <Link href="/dev" className={buttonClass("ghost", "w-full")}>
+            Developer tools
+          </Link>
+        )}
       </section>
 
       <section className={CARD}>

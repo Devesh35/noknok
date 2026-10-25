@@ -22,6 +22,7 @@ export function ShortLink({ code }: { code: string }) {
   if (error?.code === "NOT_FOUND") {
     return (
       <EmptyState
+        page
         emoji="🔗"
         title="This link doesn't lead anywhere"
         body="The code may be mistyped, or the activity was created on another device."
@@ -36,6 +37,7 @@ export function ShortLink({ code }: { code: string }) {
   if (error) {
     return (
       <EmptyState
+        page
         emoji="📡"
         title="Couldn't open this link"
         body={error.message}

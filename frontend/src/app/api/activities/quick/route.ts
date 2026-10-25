@@ -6,7 +6,8 @@ import { handle, json, readJson } from "@/server/respond";
 
 export function POST(request: NextRequest) {
   return handle(async () => {
+    const me = await requireUser(); // before parsing: no schema hints to anonymous callers
     const input = quickPlanInput.parse(await readJson(request));
-    return json(await createQuickPlan(await requireUser(), input));
+    return json(await createQuickPlan(me, input));
   });
 }

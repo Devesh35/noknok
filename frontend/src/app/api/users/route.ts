@@ -7,8 +7,9 @@ import { register, searchPeople } from "@/server/users";
 
 export function GET(request: NextRequest) {
   return handle(async () => {
+    // Same ceiling as the plan search; a regex over a longer needle is a scan.
     const { q = "" } = readQuery(request);
-    return json({ items: await searchPeople(q, await currentUser()) });
+    return json({ items: await searchPeople(q.slice(0, 80), await currentUser()) });
   });
 }
 

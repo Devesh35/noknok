@@ -4,6 +4,34 @@ import { ApiError, ERROR_CODES, type ErrorCode, type Result } from "@/lib/errors
 
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
+// A request that hangs is reported as a network error instead of a spinner
+// that never ends. Uploads get longer: a few hundred KB over mobile data.
+const TIMEOUT_MS = 15_000;
+const UPLOAD_TIMEOUT_MS = 60_000;
+
+// Views that need to know the session died (so the shell shows the logged-out
+// state) register here; the query layer does, once.
+let onLoggedOut: (() => void) | null = null;
+export function setLoggedOutHandler(handler: () => void) {
+  onLoggedOut = handler;
+}
+
+function networkError(error: unknown): ApiError {
+  const timedOut = error instanceof DOMException && error.name === "TimeoutError";
+  return new ApiError(
+    "NETWORK",
+    timedOut ? "NokNok is taking too long to answer. Try again." : "Can't reach NokNok. Check your connection.",
+  );
+}
+
+function fromPayload(payload: unknown, fallback: string): ApiError {
+  const error = (payload as { error?: { code?: unknown; message?: unknown } } | null)?.error;
+  const code = isErrorCode(error?.code) ? error.code : "SERVER";
+  const message = typeof error?.message === "string" ? error.message : fallback;
+  if (code === "NOT_LOGGED_IN") onLoggedOut?.();
+  return new ApiError(code, message);
+}
+
 interface Options {
   method?: Method;
   body?: unknown;
@@ -35,9 +63,10 @@ export async function apiFetch<T>(path: string, options: Options = {}): Promise<
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       credentials: "same-origin",
       cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-  } catch {
-    throw new ApiError("NETWORK", "Can't reach NokNok. Check your connection.");
+  } catch (error) {
+    throw networkError(error);
   }
 
   const text = await response.text();
@@ -50,12 +79,7 @@ export async function apiFetch<T>(path: string, options: Options = {}): Promise<
     }
   }
 
-  if (!response.ok) {
-    const error = (payload as { error?: { code?: unknown; message?: unknown } } | null)?.error;
-    const code = isErrorCode(error?.code) ? error.code : "SERVER";
-    const message = typeof error?.message === "string" ? error.message : "Something went wrong";
-    throw new ApiError(code, message);
-  }
+  if (!response.ok) throw fromPayload(payload, "Something went wrong");
   return payload as T;
 }
 
@@ -68,17 +92,13 @@ export async function apiUpload<T>(path: string, blob: Blob): Promise<T> {
       headers: { "content-type": blob.type },
       body: blob,
       credentials: "same-origin",
+      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
     });
-  } catch {
-    throw new ApiError("NETWORK", "Can't reach NokNok. Check your connection.");
+  } catch (error) {
+    throw networkError(error);
   }
   const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = (payload as { error?: { code?: unknown; message?: unknown } } | null)?.error;
-    const code = isErrorCode(error?.code) ? error.code : "SERVER";
-    const message = typeof error?.message === "string" ? error.message : "Upload failed";
-    throw new ApiError(code, message);
-  }
+  if (!response.ok) throw fromPayload(payload, "Upload failed");
   return payload as T;
 }
 

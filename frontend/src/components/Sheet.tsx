@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 interface SheetProps {
   open: boolean;
@@ -18,33 +18,65 @@ const FOCUSABLE =
 export function Sheet({ open, onClose, title, children }: SheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+
+  // Listeners live on the document, not the panel, so Escape and Tab work
+  // even when focus hasn't landed inside yet (or a click moved it out).
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
-    return () => opener?.focus?.();
+    // The panel only becomes focusable once `inert` is gone and the
+    // visibility transition has left "hidden" (it starts hidden, so the first
+    // frame is too early). Retry briefly until focus lands inside.
+    let tries = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const focusPanel = () => {
+      const panel = panelRef.current;
+      if (!panel || panel.contains(document.activeElement)) return;
+      panel.focus();
+      if (!panel.contains(document.activeElement) && ++tries < 15) timer = setTimeout(focusPanel, 30);
+    };
+    timer = setTimeout(focusPanel, 0);
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      const active = document.activeElement;
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!panel.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && (active === first || active === panel)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("keydown", onKeyDown);
+      if (opener && opener.isConnected) opener.focus();
+    };
   }, [open]);
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      onClose();
-      return;
-    }
-    if (event.key !== "Tab" || !panelRef.current) return;
-    const focusable = [...panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    const active = document.activeElement;
-    if (event.shiftKey && (active === first || active === panelRef.current)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
 
   return (
     <div
@@ -68,7 +100,6 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        onKeyDown={onKeyDown}
         className={`relative max-h-[90dvh] w-full overflow-y-auto rounded-t-[2rem] border border-line bg-canvas-2/95 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl outline-none backdrop-blur-xl transition duration-300 ease-out-soft md:max-w-md md:rounded-[2rem] ${
           open
             ? "translate-y-0 opacity-100 md:scale-100"
