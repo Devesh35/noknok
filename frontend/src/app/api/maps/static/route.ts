@@ -1,3 +1,4 @@
+import { LAUNCH_AREA } from "@/lib/activity";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { GOOGLE_MAPS } from "@/lib/maps/provider";
@@ -9,8 +10,8 @@ import { fail, handle } from "@/server/respond";
 // is fetched once per venue and then served from the CDN for a year; the
 // coordinates are rounded so near-identical pins share a cache entry.
 const query = z.object({
-  lat: z.coerce.number().min(-90).max(90),
-  lng: z.coerce.number().min(-180).max(180),
+  lat: z.coerce.number().min(LAUNCH_AREA.south).max(LAUNCH_AREA.north),
+  lng: z.coerce.number().min(LAUNCH_AREA.west).max(LAUNCH_AREA.east),
   w: z.coerce.number().int().min(100).max(640).default(640),
   h: z.coerce.number().int().min(100).max(640).default(360),
 });

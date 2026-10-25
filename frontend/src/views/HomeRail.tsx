@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Avatar } from "@/components/Avatar";
 import { buttonClass } from "@/components/Button";
 import {
+  ArrowLeftIcon,
   CalendarIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -27,6 +28,31 @@ const MAX_PEOPLE = 4;
 const CARD = "glass-card rounded-[1.75rem] p-5";
 const CARD_TITLE = "text-lg font-extrabold text-ink";
 const VIEW_ALL = "text-sm font-semibold text-brand-700 hover:underline";
+
+// Invitation to host, above the calendar in the right rail.
+export function HostCard() {
+  return (
+    <section className="relative overflow-hidden rounded-[1.75rem] border border-brand-600/30 bg-linear-to-b from-brand-600/20 to-surface p-5 text-center">
+      <span className="pointer-events-none absolute -top-10 left-1/2 h-28 w-28 -translate-x-1/2 rounded-full bg-brand-500/30 blur-2xl" />
+      <span className="relative block text-3xl drop-shadow" aria-hidden="true">
+        👑
+      </span>
+      <p className="relative mt-2 text-base font-bold text-ink">
+        Host your first hangout
+      </p>
+      <p className="relative mt-1 text-xs text-soft">
+        Bring people together around what you love.
+      </p>
+      <Link
+        href="/host"
+        className={buttonClass("primary", "relative mt-4 w-full")}
+      >
+        Host something
+        <ArrowLeftIcon className="h-4 w-4 rotate-180" />
+      </Link>
+    </section>
+  );
+}
 
 // Monday-first week that contains `day`.
 function weekOf(day: Date): Date[] {

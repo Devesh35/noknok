@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import type { MapViewProps } from "@/components/MapView";
-import { CATEGORY_META, coordsOf } from "@/lib/activity";
+import { CATEGORY_META, LAUNCH_AREA, coordsOf } from "@/lib/activity";
 import { loadGoogleMaps, pinElement } from "@/lib/maps/google";
 import { GOOGLE_MAPS } from "@/lib/maps/provider";
 
@@ -31,6 +31,9 @@ export function MapViewGoogle({ activities, center }: MapViewProps) {
         streetViewControl: false,
         mapTypeControl: false,
         fullscreenControl: false,
+        // The map can't leave the launch cities.
+        restriction: { latLngBounds: LAUNCH_AREA, strictBounds: true },
+        minZoom: 11,
       });
 
       const bounds = new LatLngBounds();
@@ -44,7 +47,9 @@ export function MapViewGoogle({ activities, center }: MapViewProps) {
           content: pinElement(CATEGORY_META[activity.category].emoji, true),
           gmpClickable: true,
         });
-        marker.addListener("gmp-click", () => router.push(`/party/${activity.id}`));
+        marker.addListener("gmp-click", () =>
+          router.push(`/party/${activity.id}`),
+        );
         return marker;
       });
 

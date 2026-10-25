@@ -49,7 +49,12 @@ import {
   toListQuery,
   type Filters,
 } from "@/views/HomeFilters";
-import { PeopleNearYou, WeekStrip, YourPlans } from "@/views/HomeRail";
+import {
+  HostCard,
+  PeopleNearYou,
+  WeekStrip,
+  YourPlans,
+} from "@/views/HomeRail";
 import { GRID, HomeSections, SearchResults } from "@/views/HomeRows";
 
 const CITY_OPTIONS: SelectOption<City>[] = CITIES.map((city) => ({
@@ -439,6 +444,7 @@ export function HomeView() {
       {/* ---------- Desktop: one sticky bar ---------- */}
       <div className="glass sticky top-0 z-30 hidden border-x-0 border-t-0 md:block">
         <div className="flex min-h-16 items-center gap-3 px-6 py-2">
+          {session !== undefined && !user && <Logo className="shrink-0" />}
           <div className="w-full max-w-xl">{searchBox}</div>
           <div className="ml-auto flex items-center gap-2">
             {cityMenu("font-semibold")}
@@ -477,6 +483,7 @@ export function HomeView() {
 
         {/* ---------- Right rail (wide screens) ---------- */}
         <aside className="mt-6 space-y-4 max-xl:hidden xl:mt-0">
+          <HostCard />
           <WeekStrip selected={day} onSelect={setDay} />
           <YourPlans items={fetched ?? []} user={user ?? null} />
           <PeopleNearYou items={fetched ?? []} user={user ?? null} />

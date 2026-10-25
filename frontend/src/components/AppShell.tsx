@@ -8,7 +8,6 @@ import { Avatar } from "@/components/Avatar";
 import { buttonClass } from "@/components/Button";
 import { LogoMark } from "@/components/LogoMark";
 import {
-  ArrowLeftIcon,
   BellIcon,
   ChevronDownIcon,
   HomeIcon,
@@ -120,6 +119,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const user = session?.user ?? null;
   const unread = session?.unread ?? 0;
   const loaded = session !== undefined;
+  const loggedOut = loaded && !user;
+  // Only a known signed-in user gets the sidebar, so it never flashes while
+  // the session loads or for visitors.
+  const showSidebar = loaded && user !== null;
+  const sidebarClass = showSidebar ? SIDEBAR_CLASS : "";
 
   // The server sends reminders and review prompts on its own clock; refetch
   // so the badges pick them up without a reload.
@@ -175,74 +179,54 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
       {/* ---------- Desktop: left sidebar ---------- */}
-      <aside
-        aria-label="Primary"
-        className="fixed inset-y-0 left-0 z-45 hidden w-64 flex-col border-r border-line bg-canvas-2/80 px-4 pt-5 pb-6 backdrop-blur-xl md:flex"
-      >
-        <Logo className="px-2 text-2xl" />
-        <nav className="mt-8 flex flex-col gap-1">
-          <Link href="/" className={sideLinkClass(onHome)}>
-            <HomeIcon className={sideIconClass(onHome)} />
-            Home
-          </Link>
-          <Link href="/host" className={sideLinkClass(onHost)}>
-            <PlusIcon className={sideIconClass(onHost)} />
-            Host
-          </Link>
-          {user && (
-            <>
-              <Link href="/notifications" className={sideLinkClass(onAlerts)}>
-                <BellIcon className={sideIconClass(onAlerts)} />
-                Alerts
-                {unread > 0 && (
-                  <span className="ml-auto rounded-full bg-location px-2 py-0.5 text-[11px] font-bold text-white">
-                    {unread > 9 ? "9+" : unread}
-                    <span className="sr-only"> unread</span>
-                  </span>
-                )}
-              </Link>
-              <Link href="/u/me" className={sideLinkClass(onProfile)}>
-                <UserIcon className={sideIconClass(onProfile)} />
-                Profile
-              </Link>
-              <Link href="/settings" className={sideLinkClass(onSettings)}>
-                <SettingsIcon className={sideIconClass(onSettings)} />
-                Settings
-              </Link>
-            </>
-          )}
-        </nav>
-
-        <div className="relative mt-auto overflow-hidden rounded-[1.75rem] border border-brand-600/30 bg-linear-to-b from-brand-600/20 to-surface p-5 text-center">
-          <span className="pointer-events-none absolute -top-10 left-1/2 h-28 w-28 -translate-x-1/2 rounded-full bg-brand-500/30 blur-2xl" />
-          <span
-            className="relative block text-3xl drop-shadow"
-            aria-hidden="true"
-          >
-            👑
-          </span>
-          <p className="relative mt-2 text-base font-bold text-ink">
-            Host your first hangout
-          </p>
-          <p className="relative mt-1 text-xs text-soft">
-            Bring people together around what you love.
-          </p>
-          <Link
-            href="/host"
-            className={buttonClass("primary", "relative mt-4 w-full")}
-          >
-            Host something
-            <ArrowLeftIcon className="h-4 w-4 rotate-180" />
-          </Link>
-        </div>
-      </aside>
+      {showSidebar && (
+        <aside
+          aria-label="Primary"
+          className="fixed inset-y-0 left-0 z-45 hidden w-64 flex-col border-r border-line bg-canvas-2/80 px-4 pt-5 pb-6 backdrop-blur-xl md:flex"
+        >
+          <Logo className="px-2 text-2xl" />
+          <nav className="mt-8 flex flex-col gap-1">
+            <Link href="/" className={sideLinkClass(onHome)}>
+              <HomeIcon className={sideIconClass(onHome)} />
+              Home
+            </Link>
+            <Link href="/host" className={sideLinkClass(onHost)}>
+              <PlusIcon className={sideIconClass(onHost)} />
+              Host
+            </Link>
+            {user && (
+              <>
+                <Link href="/notifications" className={sideLinkClass(onAlerts)}>
+                  <BellIcon className={sideIconClass(onAlerts)} />
+                  Alerts
+                  {unread > 0 && (
+                    <span className="ml-auto rounded-full bg-location px-2 py-0.5 text-[11px] font-bold text-white">
+                      {unread > 9 ? "9+" : unread}
+                      <span className="sr-only"> unread</span>
+                    </span>
+                  )}
+                </Link>
+                <Link href="/u/me" className={sideLinkClass(onProfile)}>
+                  <UserIcon className={sideIconClass(onProfile)} />
+                  Profile
+                </Link>
+                <Link href="/settings" className={sideLinkClass(onSettings)}>
+                  <SettingsIcon className={sideIconClass(onSettings)} />
+                  Settings
+                </Link>
+              </>
+            )}
+          </nav>
+        </aside>
+      )}
 
       {/* ---------- Desktop: top bar ---------- */}
       <header
         style={{ viewTransitionName: "site-header" }}
-        className={`glass sticky top-0 z-40 hidden h-16 border-x-0 border-t-0 ${onHome ? "" : "md:block"} ${SIDEBAR_CLASS}`}
+        className={`glass sticky top-0 z-40 hidden h-16 border-x-0 border-t-0 ${onHome ? "" : "md:block"} ${sidebarClass}`}
       >
         <div className="flex h-full items-center gap-3 px-6">
+          {loggedOut && <Logo className="shrink-0" />}
           <button
             type="button"
             onClick={goSearch}
@@ -256,7 +240,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <main
-        className={`flex-1 md:pb-0 ${SIDEBAR_CLASS} ${showTabs ? "pb-28" : ""}`}
+        className={`flex-1 md:pb-0 ${sidebarClass} ${showTabs ? "pb-28" : ""}`}
       >
         {children}
       </main>
