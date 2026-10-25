@@ -249,7 +249,13 @@ export function HomeSections({
       <section aria-labelledby="nearby-heading" className="scroll-mt-24">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 id="nearby-heading" className={SECTION_TITLE}>
-            Plans in <span className="text-location">{city}</span>
+            {view === "map" ? (
+              "Plans on the map"
+            ) : (
+              <>
+                Plans in <span className="text-location">{city}</span>
+              </>
+            )}
           </h2>
           <div className="flex gap-1">
             <Chip selected={view === "list"} onClick={() => onView("list")}>

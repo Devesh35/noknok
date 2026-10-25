@@ -215,7 +215,14 @@ export function HomeView() {
 
   // The last list stays on screen while a filter change is fetching, so the
   // skeleton only shows on first load.
-  const activities = useActivities(toListQuery(applied, city, searched), true);
+  // The map view pins plans in all four cities; the list stays on one.
+  const activities = useActivities(
+    {
+      ...toListQuery(applied, city, searched),
+      ...(view === "map" ? { city: undefined } : {}),
+    },
+    true,
+  );
   const people = usePeople(searched);
   const fetched = activities.data?.items ?? null;
   // Only offer categories that have plans; keep the selected one so it can be

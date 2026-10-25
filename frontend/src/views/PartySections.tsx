@@ -7,7 +7,7 @@ import { CategoryBadge, VisibilityBadge } from "@/components/Badge";
 import { Button, buttonClass } from "@/components/Button";
 import { CalendarIcon, MapPinIcon } from "@/components/icons";
 import { VenueMapStatic } from "@/components/VenueMapStatic";
-import { addressLine, mapsUrl } from "@/lib/activity";
+import { addressLine, coordsOf, mapsUrl } from "@/lib/activity";
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import {
   formatDateTime,
@@ -34,13 +34,15 @@ export function PartyHeader({
   pageUrl: string;
   live: boolean;
 }) {
-  const hasPin = activity.lat !== undefined && activity.lng !== undefined;
   // Without a street address, the city still tells people roughly where.
   const address = addressLine(activity) || activity.city;
   return (
     <header className="space-y-3">
       <div className="flex flex-wrap gap-1">
-        <CategoryBadge category={activity.category} subcategory={activity.subcategory} />
+        <CategoryBadge
+          category={activity.category}
+          subcategory={activity.subcategory}
+        />
         <VisibilityBadge visibility={activity.visibility} />
         {inviter && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-600/10 px-2.5 py-1 text-xs font-semibold text-brand-700">
@@ -103,14 +105,13 @@ export function PartyHeader({
           </a>
         </p>
       </div>
-      {hasPin && (
-        <VenueMapStatic
-          center={{ lat: activity.lat!, lng: activity.lng! }}
-          venueName={activity.venueName}
-          mapsHref={mapsUrl(activity)}
-          className="h-72 lg:h-[28rem]"
-        />
-      )}
+      {/* Plans without an exact pin show their city's centre. */}
+      <VenueMapStatic
+        center={coordsOf(activity)}
+        venueName={activity.venueName}
+        mapsHref={mapsUrl(activity)}
+        className="h-72 lg:h-[28rem]"
+      />
     </header>
   );
 }
@@ -239,7 +240,9 @@ export function PartyBody({
           {activity.priceP === 0
             ? "Free to join. You can leave any time."
             : `Leave ${refundWindow(activity.refundCutoffHours)} for a full refund.${
-                activity.refundCutoffHours > 0 ? " After that there is no refund." : ""
+                activity.refundCutoffHours > 0
+                  ? " After that there is no refund."
+                  : ""
               } If the host cancels, you are refunded in full.`}
         </p>
       </section>
