@@ -362,7 +362,15 @@ export function HostManage({ id }: { id: string }) {
               >
                 Edit
               </Link>
-              <Button variant="ghost" onClick={() => setConfirmCancel(true)}>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  // Joins made from other devices since this page loaded
+                  // change what the dialog says about refunds: fetch first.
+                  void refetch();
+                  setConfirmCancel(true);
+                }}
+              >
                 Cancel activity
               </Button>
             </>
@@ -416,7 +424,11 @@ export function HostManage({ id }: { id: string }) {
                     Checked in ✓
                   </span>
                 ) : live ? (
-                  <RemoveAttendee activityId={id} user={entry.user} paid={entry.join.ticketP + entry.join.feeP > 0} />
+                  <RemoveAttendee
+                    activityId={id}
+                    user={entry.user}
+                    paid={entry.join.ticketP + entry.join.feeP > 0}
+                  />
                 ) : undefined,
               ),
             )}

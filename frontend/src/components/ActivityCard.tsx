@@ -1,14 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { ViewTransition, type ReactNode } from "react";
+import {
+  useState,
+  ViewTransition,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
+import { setInterested } from "@/api";
 import { Avatar } from "@/components/Avatar";
 import { CategoryBadge, VisibilityBadge } from "@/components/Badge";
 import { Cover } from "@/components/Cover";
-import { LockIcon } from "@/components/icons";
+import { ClockIcon, HeartIcon, LockIcon, MapPinIcon } from "@/components/icons";
 import { NAV_FORWARD } from "@/components/PageTransition";
-import { formatDateTime, formatPrice, plural } from "@/lib/format";
-import { coverTransitionName, setMorphSource, useIsMorphSource } from "@/lib/morph";
+import { formatDateTime, formatPrice, formatTime, plural } from "@/lib/format";
+import {
+  coverTransitionName,
+  setMorphSource,
+  useIsMorphSource,
+} from "@/lib/morph";
+import { toast } from "@/lib/toast";
 import type { Activity, User } from "@/lib/types";
 
 interface ActivityCardProps {
@@ -28,12 +39,84 @@ interface ActivityCardProps {
   scope?: string;
   // The viewer holds a ticket: shown as a "You're going" badge.
   mine?: boolean;
+  // The viewer has saved this plan. Left undefined, no heart is drawn (guests,
+  // the wizard preview).
+  interested?: boolean;
   // Render as a plain block instead of a link (wizard preview).
   preview?: boolean;
   className?: string;
 }
 
-const MAX_FACES = 4;
+const MAX_FACES = 3;
+const MONTH = new Intl.DateTimeFormat("en-IN", { month: "short" });
+const WEEKDAY = new Intl.DateTimeFormat("en-IN", { weekday: "short" });
+
+// "OCT / 25 / Sun" tile that sits on the cover's bottom edge.
+function DateTile({ iso }: { iso: string }) {
+  const date = new Date(iso);
+  return (
+    <span className="glass flex w-14 flex-col items-center rounded-2xl border-brand-600/40 py-1.5 leading-none shadow-lg">
+      <span className="text-[10px] font-bold tracking-wider text-brand-700 uppercase">
+        {MONTH.format(date)}
+      </span>
+      <span className="mt-0.5 text-2xl font-extrabold text-ink">
+        {date.getDate()}
+      </span>
+      <span className="mt-0.5 text-[10px] font-semibold text-soft">
+        {WEEKDAY.format(date)}
+      </span>
+    </span>
+  );
+}
+
+// Heart in the cover corner. It lives inside the card's link, so it stops
+// the click from opening the plan.
+function SaveButton({
+  activityId,
+  interested,
+}: {
+  activityId: string;
+  interested: boolean;
+}) {
+  const [saved, setSaved] = useState(interested);
+  const [busy, setBusy] = useState(false);
+  // The same plan can sit in two rows; after a save the refetch brings the
+  // other card's copy up to date (state adjusted during render, not an effect).
+  const [seen, setSeen] = useState(interested);
+  if (seen !== interested) {
+    setSeen(interested);
+    setSaved(interested);
+  }
+  const toggle = async (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (busy) return;
+    const next = !saved;
+    setSaved(next);
+    setBusy(true);
+    const result = await setInterested(activityId, next);
+    setBusy(false);
+    if (!result.ok) {
+      setSaved(!next);
+      toast(result.message);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-pressed={saved}
+      aria-label={saved ? "Remove from saved" : "Save this plan"}
+      className={`inline-flex h-10 w-10 items-center justify-center rounded-full border backdrop-blur transition duration-200 active:scale-90 ${
+        saved
+          ? "border-location/60 bg-location/25 text-location"
+          : "border-white/25 bg-black/30 text-white hover:bg-black/45"
+      }`}
+    >
+      <HeartIcon filled={saved} className="h-5 w-5" />
+    </button>
+  );
+}
 
 export function ActivityCard({
   activity,
@@ -47,6 +130,7 @@ export function ActivityCard({
   scope = "list",
   preview = false,
   mine = false,
+  interested,
   className = "",
 }: ActivityCardProps) {
   const morphKey = `${scope}:${activity.id}`;
@@ -54,7 +138,9 @@ export function ActivityCard({
   const price = formatPrice(activity.priceP);
   const cancelled = activity.status === "cancelled";
   const place = `${activity.venueName} · ${activity.city}`;
-  const status = cancelled ? "Cancelled" : (note ?? `${going}/${activity.capacity} going`);
+  const status = cancelled
+    ? "Cancelled"
+    : (note ?? `${going}/${activity.capacity} going`);
   const spotsLeft = Math.max(activity.capacity - going, 0);
 
   let people: string;
@@ -77,7 +163,11 @@ export function ActivityCard({
   else people = `${going} ${going === 1 ? "person is" : "people are"} going`;
 
   const room =
-    spotsLeft === 0 ? "Full" : spotsLeft <= 3 ? `Needs ${spotsLeft} more` : `${plural(spotsLeft, "spot")} left`;
+    spotsLeft === 0
+      ? "Full"
+      : spotsLeft <= 3
+        ? `Needs ${spotsLeft} more`
+        : `${plural(spotsLeft, "spot")} left`;
 
   const frame = (classes: string, children: ReactNode) =>
     preview ? (
@@ -102,12 +192,16 @@ export function ActivityCard({
   ) : (
     <Cover
       activity={activity}
-      className={`h-52 w-full md:h-60 ${locked ? "scale-110 blur-xl" : ""} ${cancelled ? "grayscale" : ""}`}
+      className={`h-44 w-full md:h-48 ${locked ? "scale-110 blur-xl" : ""} ${cancelled ? "grayscale" : ""}`}
     />
   );
   if (isMorphSource && !locked) {
     cover = (
-      <ViewTransition name={coverTransitionName(activity.id)} share="morph" default="none">
+      <ViewTransition
+        name={coverTransitionName(activity.id)}
+        share="morph"
+        default="none"
+      >
         {cover}
       </ViewTransition>
     );
@@ -119,10 +213,16 @@ export function ActivityCard({
       <>
         {cover}
         <div className="min-w-0 flex-1 py-0.5">
-          <h3 className="truncate text-lg font-bold text-ink md:text-xl">{activity.title}</h3>
-          <p className="truncate text-base text-soft">{formatDateTime(activity.startsAt)}</p>
+          <h3 className="truncate text-lg font-bold text-ink md:text-xl">
+            {activity.title}
+          </h3>
+          <p className="truncate text-base text-soft">
+            {formatDateTime(activity.startsAt)}
+          </p>
           <p className="truncate text-base text-muted">{place}</p>
-          <p className={`text-sm ${cancelled ? "font-semibold text-red-400" : "text-muted"}`}>
+          <p
+            className={`text-sm ${cancelled ? "font-semibold text-red-400" : "text-muted"}`}
+          >
             {status} · <span className="font-semibold text-ink">{price}</span>
           </p>
         </div>
@@ -144,8 +244,12 @@ export function ActivityCard({
           </div>
         </div>
         <div className="space-y-1.5 p-4 md:p-5">
-          <h3 className="truncate text-lg font-bold text-ink md:text-xl">Private plan</h3>
-          <p className="truncate text-base text-soft">{formatDateTime(activity.startsAt)}</p>
+          <h3 className="truncate text-lg font-bold text-ink md:text-xl">
+            Private plan
+          </h3>
+          <p className="truncate text-base text-soft">
+            {formatDateTime(activity.startsAt)}
+          </p>
           <p className="text-base text-muted">
             {host
               ? activity.visibility === "friends"
@@ -163,36 +267,76 @@ export function ActivityCard({
     <>
       <div className="relative">
         {cover}
-        <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-          <CategoryBadge category={activity.category} subcategory={activity.subcategory} />
-          <VisibilityBadge visibility={activity.visibility} />
+        <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap gap-1.5">
+            <CategoryBadge
+              category={activity.category}
+              subcategory={activity.subcategory}
+            />
+            {mine && !cancelled ? (
+              <span className="rounded-full bg-success px-2.5 py-1 text-xs font-bold text-white shadow">
+                You&apos;re going
+              </span>
+            ) : (
+              <VisibilityBadge visibility={activity.visibility} />
+            )}
+          </div>
+          {interested !== undefined && !preview && !cancelled && (
+            <SaveButton activityId={activity.id} interested={interested} />
+          )}
         </div>
-        {mine && !cancelled && (
-          <span className="absolute top-3 right-3 rounded-full bg-success px-2.5 py-1 text-xs font-bold text-white shadow">
-            You&apos;re going
-          </span>
-        )}
-        <span className="absolute right-3 bottom-3 rounded-full bg-surface/85 px-3 py-1.5 text-sm font-bold text-ink shadow backdrop-blur">
-          {price}
-        </span>
+        <div className="absolute -bottom-4 left-4">
+          <DateTile iso={activity.startsAt} />
+        </div>
       </div>
-      <div className="space-y-1.5 p-4 md:p-5">
-        <h3 className="truncate text-lg font-bold text-ink md:text-xl">{activity.title}</h3>
-        <p className="truncate text-base text-soft">{formatDateTime(activity.startsAt)}</p>
-        <p className="truncate text-base text-muted">
-          {place}
+      <div className="space-y-1.5 px-4 pt-7 pb-4 md:px-5 md:pb-5">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="min-w-0 truncate text-lg font-bold text-ink md:text-xl">
+            {activity.title}
+          </h3>
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${
+              activity.priceP === 0
+                ? "bg-success/15 text-success"
+                : "bg-brand-600/15 text-brand-700"
+            }`}
+          >
+            {price}
+          </span>
+        </div>
+        <p className="flex items-center gap-1.5 truncate text-sm text-soft">
+          <MapPinIcon className="h-4 w-4 shrink-0 text-location" />
+          <span className="truncate">{place}</span>
+        </p>
+        <p className="flex items-center gap-1.5 text-sm text-soft">
+          <ClockIcon className="h-4 w-4 shrink-0 text-accent" />
+          {formatTime(activity.startsAt)} – {formatTime(activity.endsAt)}
         </p>
         <div className="flex items-center gap-2 pt-2">
           {attendees.length > 0 && (
-            <span className="flex shrink-0 -space-x-1">
+            <span className="flex shrink-0 -space-x-1.5">
               {attendees.slice(0, MAX_FACES).map((person) => (
-                <Avatar key={person.id} user={person} size="sm" />
+                <Avatar
+                  key={person.id}
+                  user={person}
+                  size="sm"
+                  className="ring-2 ring-surface"
+                />
               ))}
+              {going > MAX_FACES && (
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-[10px] font-bold text-white ring-2 ring-surface">
+                  +{going - MAX_FACES}
+                </span>
+              )}
             </span>
           )}
           <span
             className={`min-w-0 truncate text-sm font-semibold ${
-              cancelled ? "text-red-400" : friends.length > 0 ? "text-brand-700" : "text-ink"
+              cancelled
+                ? "text-red-400"
+                : friends.length > 0
+                  ? "text-brand-700"
+                  : "text-ink"
             }`}
           >
             {people}
@@ -200,7 +344,9 @@ export function ActivityCard({
         </div>
         {/* Second line, so the people line above never has to be cut short. */}
         <p className="flex items-center justify-between gap-2 text-xs text-muted">
-          {host && <span className="min-w-0 truncate">Hosted by {host.name}</span>}
+          {host && (
+            <span className="min-w-0 truncate">Hosted by {host.name}</span>
+          )}
           {!cancelled && (
             <span
               className={`ml-auto shrink-0 font-medium ${

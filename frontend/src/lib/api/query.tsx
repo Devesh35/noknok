@@ -13,7 +13,7 @@ import {
 } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { apiFetch, setLoggedOutHandler, withQuery } from "@/lib/api/client";
-import type { ApiError } from "@/lib/errors";
+import { ERROR_STATUS, type ApiError } from "@/lib/errors";
 
 let client: QueryClient | null = null;
 
@@ -24,12 +24,13 @@ function getClient(): QueryClient {
       queries: {
         staleTime: 10_000,
         refetchOnWindowFocus: true,
-        // One more try for a flaky answer; none for a dead connection or a
-        // hung request (that already waited the client timeout), and none
-        // for an answer that won't change on a retry.
+        // One more try for a flaky server answer (5xx); none for a dead
+        // connection or a hung request (that already waited the client
+        // timeout), and none for a 4xx, which won't change on a retry and
+        // would only hold the skeleton on screen longer.
         retry: (failures, error) => {
-          const code = (error as ApiError).code;
-          return failures < 1 && code !== "NETWORK" && code !== "NOT_LOGGED_IN" && code !== "NOT_FOUND";
+          const status = ERROR_STATUS[(error as ApiError).code] ?? 500;
+          return failures < 1 && status >= 500;
         },
       },
     },

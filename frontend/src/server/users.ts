@@ -1,8 +1,19 @@
 import "server-only";
 import { newId } from "@/lib/ids";
-import { HANDLE_PATTERN, type ProfilePatch, type RegisterInput, type SettingsPatch } from "@/lib/schemas";
+import {
+  HANDLE_PATTERN,
+  type ProfilePatch,
+  type RegisterInput,
+  type SettingsPatch,
+} from "@/lib/schemas";
 import { HOUR_MS } from "@/lib/time";
-import type { Me, PersonResult, SessionDto, User, UserStats } from "@/lib/types";
+import type {
+  Me,
+  PersonResult,
+  SessionDto,
+  User,
+  UserStats,
+} from "@/lib/types";
 import { ApiError } from "@/lib/errors";
 import { friendIds, mutualFriendIds } from "@/lib/visibility";
 import { LIVE_STATUSES } from "@/server/access";
@@ -34,8 +45,24 @@ import { fail } from "@/server/respond";
 const SEARCH_LIMIT = 6;
 // "me" is a route; the rest would let someone pass as staff.
 const RESERVED_HANDLES = [
-  "me", "admin", "administrator", "root", "noknok", "support", "help", "staff", "team",
-  "official", "moderator", "mod", "security", "system", "api", "dev", "settings", "host",
+  "me",
+  "admin",
+  "administrator",
+  "root",
+  "noknok",
+  "support",
+  "help",
+  "staff",
+  "team",
+  "official",
+  "moderator",
+  "mod",
+  "security",
+  "system",
+  "api",
+  "dev",
+  "settings",
+  "host",
 ];
 const REGISTER_LIMIT = 10;
 
@@ -63,10 +90,17 @@ export async function userByHandle(handle: string): Promise<UserDoc | null> {
 }
 
 // Also true for a handle that isn't valid, so it never reads as available.
-export async function isHandleTaken(handle: string, exceptUserId?: string): Promise<boolean> {
-  if (!HANDLE_PATTERN.test(handle) || RESERVED_HANDLES.includes(handle)) return true;
+export async function isHandleTaken(
+  handle: string,
+  exceptUserId?: string,
+): Promise<boolean> {
+  if (!HANDLE_PATTERN.test(handle) || RESERVED_HANDLES.includes(handle))
+    return true;
   await connectDb();
-  const other = await UserModel.exists({ handle, _id: { $ne: exceptUserId ?? "" } });
+  const other = await UserModel.exists({
+    handle,
+    _id: { $ne: exceptUserId ?? "" },
+  });
   return other !== null;
 }
 
@@ -84,7 +118,11 @@ export async function adoptAnonInvites(userId: string): Promise<void> {
     await InviteOpenModel.updateOne(
       { _id: id },
       {
-        $setOnInsert: { _id: id, viewerKey: userId, activityId: open.activityId },
+        $setOnInsert: {
+          _id: id,
+          viewerKey: userId,
+          activityId: open.activityId,
+        },
         ...(Object.keys(set).length ? { $set: set } : {}),
       },
       { upsert: true },
@@ -104,9 +142,12 @@ export async function register(input: RegisterInput, ip: string): Promise<Me> {
   }
 
   // 3-17 characters, so the two-digit suffix still fits the 20-character limit.
-  const base = (input.name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "user").slice(0, 17).padEnd(3, "0");
+  const base = (input.name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "user")
+    .slice(0, 17)
+    .padEnd(3, "0");
   let handle = base;
-  while (await isHandleTaken(handle)) handle = `${base}${Math.floor(10 + Math.random() * 90)}`;
+  while (await isHandleTaken(handle))
+    handle = `${base}${Math.floor(10 + Math.random() * 90)}`;
 
   const created = await UserModel.create({
     _id: newId("u"),
@@ -127,51 +168,86 @@ export async function register(input: RegisterInput, ip: string): Promise<Me> {
   return toMe(user);
 }
 
-export async function updateProfile(me: UserDoc, patch: ProfilePatch): Promise<Me> {
+export async function updateProfile(
+  me: UserDoc,
+  patch: ProfilePatch,
+): Promise<Me> {
   await connectDb();
   if (patch.handle !== undefined && patch.handle !== me.handle) {
-    if (await isHandleTaken(patch.handle, me._id)) fail("HANDLE_TAKEN", "That handle is taken");
+    if (await isHandleTaken(patch.handle, me._id))
+      fail("HANDLE_TAKEN", "That handle is taken");
   }
-  const doc = await UserModel.findByIdAndUpdate(me._id, { $set: patch }, { returnDocument: "after" }).lean();
+  // A null photo means "back to initials": drop the field rather than store null.
+  const { avatarUrl, ...rest } = patch;
+  const update = {
+    $set: avatarUrl === null ? rest : patch,
+    ...(avatarUrl === null ? { $unset: { avatarUrl: "" } } : {}),
+  };
+  const doc = await UserModel.findByIdAndUpdate(me._id, update, {
+    returnDocument: "after",
+  }).lean();
   if (!doc) fail("NOT_FOUND");
   await audit(me._id, "user.update", "user", me._id, Object.keys(patch));
   return toMe(doc);
 }
 
-export async function updateSettings(me: UserDoc, patch: SettingsPatch): Promise<Me> {
+export async function updateSettings(
+  me: UserDoc,
+  patch: SettingsPatch,
+): Promise<Me> {
   await connectDb();
-  const set = Object.fromEntries(Object.entries(patch).map(([k, v]) => [`settings.${k}`, v]));
-  const doc = await UserModel.findByIdAndUpdate(me._id, { $set: set }, { returnDocument: "after" }).lean();
+  const set = Object.fromEntries(
+    Object.entries(patch).map(([k, v]) => [`settings.${k}`, v]),
+  );
+  const doc = await UserModel.findByIdAndUpdate(
+    me._id,
+    { $set: set },
+    { returnDocument: "after" },
+  ).lean();
   if (!doc) fail("NOT_FOUND");
   return toMe(doc);
 }
 
 // Returns whether the user is now blocked. Blocking also unfriends and takes
 // them off my upcoming plans (refunded in full), so they can't stay in.
-export async function toggleBlock(me: UserDoc, userId: string): Promise<boolean> {
+export async function toggleBlock(
+  me: UserDoc,
+  userId: string,
+): Promise<boolean> {
   await devSettings();
   await connectDb();
   const blocked = me.blockedIds.includes(userId);
   await UserModel.updateOne(
     { _id: me._id },
-    blocked ? { $pull: { blockedIds: userId } } : { $addToSet: { blockedIds: userId } },
+    blocked
+      ? { $pull: { blockedIds: userId } }
+      : { $addToSet: { blockedIds: userId } },
   );
   await audit(me._id, blocked ? "user.unblock" : "user.block", "user", userId);
   if (!blocked) {
     await removeFriendship(me, userId);
     const mine = await upcomingHostedBy(me._id);
-    for (const activity of mine) await removeFromActivity(me._id, activity, userId);
+    for (const activity of mine)
+      await removeFromActivity(me._id, activity, userId);
   }
   return !blocked;
 }
 
 async function upcomingHostedBy(userId: string): Promise<ActivityDoc[]> {
-  return ActivityModel.find({ hostId: userId, status: "active", endsAt: { $gt: new Date(now()) }, ...live }).lean();
+  return ActivityModel.find({
+    hostId: userId,
+    status: "active",
+    endsAt: { $gt: new Date(now()) },
+    ...live,
+  }).lean();
 }
 
 export async function blockedUsers(me: UserDoc): Promise<User[]> {
   await connectDb();
-  const docs = await UserModel.find({ _id: { $in: me.blockedIds }, ...live }).lean();
+  const docs = await UserModel.find({
+    _id: { $in: me.blockedIds },
+    ...live,
+  }).lean();
   return docs.map(toUser);
 }
 
@@ -182,8 +258,14 @@ export async function blockedUsers(me: UserDoc): Promise<User[]> {
 export async function deleteAccount(me: UserDoc): Promise<void> {
   await devSettings();
   await connectDb();
-  for (const activity of await upcomingHostedBy(me._id)) await cancelActivityAs(me._id, activity);
-  const joins = await JoinModel.find({ userId: me._id, status: { $in: [...LIVE_STATUSES] } }).select("activityId").lean();
+  for (const activity of await upcomingHostedBy(me._id))
+    await cancelActivityAs(me._id, activity);
+  const joins = await JoinModel.find({
+    userId: me._id,
+    status: { $in: [...LIVE_STATUSES] },
+  })
+    .select("activityId")
+    .lean();
   for (const join of joins) {
     try {
       await leaveActivity(me, join.activityId);
@@ -194,7 +276,13 @@ export async function deleteAccount(me: UserDoc): Promise<void> {
   }
   await UserModel.updateOne(
     { _id: me._id },
-    { $set: { deletedAt: new Date(), phone: `${me.phone}#${Date.now()}`, handle: me._id.toLowerCase() } },
+    {
+      $set: {
+        deletedAt: new Date(),
+        phone: `${me.phone}#${Date.now()}`,
+        handle: me._id.toLowerCase(),
+      },
+    },
   );
   await audit(me._id, "user.delete", "user", me._id);
   await endAllSessions(me._id);
@@ -207,7 +295,9 @@ export async function userStats(userId: string): Promise<UserStats> {
   const [reviews, created, joins] = await Promise.all([
     ReviewModel.find({ hostId: userId }).select("rating").lean(),
     ActivityModel.countDocuments({ hostId: userId, ...live }),
-    JoinModel.find({ userId, status: "going" }).select("activityId checkedInAt").lean(),
+    JoinModel.find({ userId, status: "going" })
+      .select("activityId checkedInAt")
+      .lean(),
   ]);
 
   const ratingCount = reviews.length;
@@ -241,12 +331,17 @@ export function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export async function searchPeople(q: string, viewer: UserDoc | null): Promise<PersonResult[]> {
+export async function searchPeople(
+  q: string,
+  viewer: UserDoc | null,
+): Promise<PersonResult[]> {
   const needle = q.trim();
   if (!needle) return [];
   await connectDb();
   const pattern = new RegExp(escapeRegex(needle), "i");
-  const exclude = [viewer?._id, ...(viewer?.blockedIds ?? [])].filter((id): id is string => !!id);
+  const exclude = [viewer?._id, ...(viewer?.blockedIds ?? [])].filter(
+    (id): id is string => !!id,
+  );
   const docs = await UserModel.find({
     ...live,
     _id: { $nin: exclude },
@@ -267,13 +362,19 @@ export async function searchPeople(q: string, viewer: UserDoc | null): Promise<P
         }).lean()
       : [],
   ]);
-  const mine = viewer ? new Set(friendIds(graph, viewer._id)) : new Set<string>();
+  const mine = viewer
+    ? new Set(friendIds(graph, viewer._id))
+    : new Set<string>();
   return docs.map((doc) => {
-    const request = pending.find((r) => r.fromId === doc._id || r.toId === doc._id);
+    const request = pending.find(
+      (r) => r.fromId === doc._id || r.toId === doc._id,
+    );
     return {
       user: toUser(doc),
       isFriend: mine.has(doc._id),
-      mutualCount: viewer ? mutualFriendIds(graph, viewer._id, doc._id).length : 0,
+      mutualCount: viewer
+        ? mutualFriendIds(graph, viewer._id, doc._id).length
+        : 0,
       request: request ? toFriendRequest(request) : null,
     };
   });

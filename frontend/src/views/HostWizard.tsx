@@ -13,11 +13,20 @@ import {
 import { ActivityCard } from "@/components/ActivityCard";
 import { Button, buttonClass } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  CheckIcon,
+  ClockIcon,
+  CloseIcon,
+  MapPinIcon,
+  PencilIcon,
+  UsersIcon,
+} from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
 import { VISIBILITY_META } from "@/lib/activity";
 import { breakdownForPrice } from "@/lib/fees";
-import { formatInr } from "@/lib/format";
-import { guessActivity } from "@/lib/guess";
+import { formatDateTime, formatInr, formatTime } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import type { Activity, Category, DevSettings, User } from "@/lib/types";
 import {
@@ -27,23 +36,102 @@ import {
   LAST_STEP,
   loadDraft,
   loadDraftStep,
-  STEP_BASICS,
-  STEP_CATEGORY,
-  STEP_PRICE,
-  STEP_WHEN_WHERE,
-  STEP_WHO,
+  STEP_DETAILS,
+  STEP_TYPE,
   STEPS,
   toInput,
   validate,
   type Form,
 } from "@/views/HostWizardSteps";
-import {
-  StepBasics,
-  StepCategory,
-  StepPrice,
-  StepWhenWhere,
-  StepWho,
-} from "@/views/HostWizardStepViews";
+import { StepDetails, StepType } from "@/views/HostWizardStepViews";
+
+// Thin bars across the top, one per step, filled up to the current one.
+function Progress({ step }: { step: number }) {
+  return (
+    <div
+      role="progressbar"
+      aria-label="Wizard progress"
+      aria-valuemin={1}
+      aria-valuemax={STEPS.length}
+      aria-valuenow={step + 1}
+      className="flex flex-1 gap-1.5"
+    >
+      {STEPS.map((_, index) => (
+        <span
+          key={index}
+          className={`h-1.5 flex-1 rounded-full transition-colors duration-500 ${
+            index <= step
+              ? "bg-linear-to-r from-brand-600 to-brand-500"
+              : "bg-ink/10"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Celebratory bits behind the tick on the success screen.
+function Confetti() {
+  const pieces = [
+    ["10%", "12%", "bg-warning", "rotate-12"],
+    ["78%", "8%", "bg-accent", "-rotate-12"],
+    ["88%", "40%", "bg-location", "rotate-45"],
+    ["6%", "56%", "bg-brand-500", "-rotate-45"],
+    ["24%", "78%", "bg-success", "rotate-12"],
+    ["70%", "82%", "bg-warning", "-rotate-12"],
+    ["50%", "4%", "bg-location", "rotate-6"],
+    ["92%", "68%", "bg-brand-700", "rotate-45"],
+  ];
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+      {pieces.map(([left, top, color, rotate], i) => (
+        <span
+          key={i}
+          className={`absolute h-2.5 w-4 rounded-sm animate-float ${color} ${rotate}`}
+          style={{ left, top, animationDelay: `${i * 0.35}s` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function Success({
+  activity,
+  onAnother,
+}: {
+  activity: Activity;
+  onAnother: () => void;
+}) {
+  return (
+    <div className="mx-auto w-full max-w-md px-4 py-10 text-center">
+      <div className="relative mx-auto flex h-56 w-56 items-center justify-center">
+        <Confetti />
+        <span className="animate-pop flex h-28 w-28 items-center justify-center rounded-full bg-brand-600 shadow-2xl shadow-brand-600/50">
+          <CheckIcon className="h-14 w-14 text-white" strokeWidth={3} />
+        </span>
+      </div>
+      <div className="stagger">
+        <h1 className="text-3xl font-extrabold tracking-tight text-ink">
+          Activity created!
+        </h1>
+        <p className="mt-2 text-base text-soft">
+          Your hangout is now live and people can start joining.
+        </p>
+        <div className="mt-8 flex flex-col gap-3">
+          <Link
+            href={`/host/${activity.id}`}
+            className={buttonClass("primary", "w-full")}
+          >
+            View activity
+          </Link>
+          <Button variant="secondary" className="w-full" onClick={onAnother}>
+            Create another
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function WizardForm({
   host,
@@ -60,26 +148,34 @@ function WizardForm({
     (current: Form, change: Partial<Form>) => ({ ...current, ...change }),
     undefined,
     () =>
-      editing ? formFrom(editing) : { ...blankForm(host.city), ...loadDraft(host.id) },
+      editing
+        ? formFrom(editing)
+        : { ...blankForm(host.city), ...loadDraft(host.id) },
   );
   const [step, setStep] = useState(() =>
-    editing ? 0 : loadDraftStep(host.id, { ...blankForm(host.city), ...loadDraft(host.id) }),
+    editing
+      ? 0
+      : loadDraftStep(host.id, {
+          ...blankForm(host.city),
+          ...loadDraft(host.id),
+        }),
   );
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   // What the server rejected on publish; the steps' own checks catch the rest.
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [created, setCreated] = useState<Activity | null>(null);
 
   // Autosave new activities so a refresh or a detour doesn't lose the work.
   useEffect(() => {
-    if (editing) return;
+    if (editing || created) return;
     try {
       window.localStorage.setItem(draft.form, JSON.stringify(form));
       window.localStorage.setItem(draft.step, String(step));
     } catch {
       // Draft autosave is best effort.
     }
-  }, [form, step, editing, draft.form, draft.step]);
+  }, [form, step, editing, created, draft.form, draft.step]);
 
   const clearDraft = () => {
     try {
@@ -93,27 +189,18 @@ function WizardForm({
   const minCapacity = editing ? editing.goingCount : 0;
   const errors = attempted ? validate(step, form, minCapacity) : {};
 
+  const goTo = (next: number) => {
+    setAttempted(false);
+    setStep(next);
+    window.scrollTo({ top: 0 });
+  };
+
   const next = () => {
     if (Object.keys(validate(step, form, minCapacity)).length > 0) {
       setAttempted(true);
       return;
     }
-    setAttempted(false);
-    // Leaving Basics: suggest the category from the text unless the host has
-    // already picked one themselves.
-    if (step === STEP_BASICS && !form.categoryConfirmed) {
-      const guess = guessActivity(form.title, form.description);
-      if (guess) {
-        patch({
-          category: guess.category,
-          subcategory: guess.subcategory,
-          setting: guess.setting,
-          coverUrl: guess.coverUrl,
-        });
-      }
-    }
-    setStep(step + 1);
-    window.scrollTo({ top: 0 });
+    goTo(step + 1);
   };
 
   const publish = async () => {
@@ -131,19 +218,20 @@ function WizardForm({
     }
     if (editing) {
       toast("Changes saved");
-    } else {
-      clearDraft();
-      toast("Your activity is live 🎉");
+      router.replace(`/host/${result.data.id}`);
+      return;
     }
-    router.replace(`/host/${result.data.id}`);
+    clearDraft();
+    setCreated(result.data);
+    window.scrollTo({ top: 0 });
   };
 
-  const discardDraft = () => {
+  const startOver = () => {
     clearDraft();
     patch(blankForm(host.city));
-    setStep(0);
-    setAttempted(false);
-    toast("Draft cleared");
+    setCreated(null);
+    setPublishError(null);
+    goTo(0);
   };
 
   // Leaves the wizard. A new plan's draft is dropped; an edit is just abandoned.
@@ -151,6 +239,8 @@ function WizardForm({
     if (!editing) clearDraft();
     router.push(editing ? `/host/${editing.id}` : "/host");
   };
+
+  if (created) return <Success activity={created} onAnother={startOver} />;
 
   const preview: Activity | null =
     step === LAST_STEP
@@ -172,75 +262,115 @@ function WizardForm({
   const price = preview
     ? breakdownForPrice(preview.priceP, dev.feeModel, dev.feePercent)
     : null;
+  const summaryRow = "flex items-center gap-3 py-2.5 text-sm";
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-6">
-      <p className="text-sm font-semibold text-brand-700">
-        Step {step + 1} of {STEPS.length}
-      </p>
-      <h1 className="text-3xl font-extrabold tracking-tight text-ink">
-        {editing ? "Edit activity" : "Host an activity"} · {STEPS[step]}
-      </h1>
-      <div
-        role="progressbar"
-        aria-label="Wizard progress"
-        aria-valuemin={1}
-        aria-valuemax={STEPS.length}
-        aria-valuenow={step + 1}
-        className="mt-3 h-2 overflow-hidden rounded-full bg-ink/10"
-      >
-        <div
-          className="h-full rounded-full bg-linear-to-r from-brand-600 to-accent transition-[width] duration-500 ease-out-soft"
-          style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
-        />
+    <div className="mx-auto w-full max-w-2xl px-4 py-4 md:py-6">
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={step === 0 ? cancel : () => goTo(step - 1)}
+          aria-label={step === 0 ? "Cancel" : "Back"}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-soft transition hover:bg-surface-hi hover:text-ink"
+        >
+          {step === 0 ? (
+            <CloseIcon className="h-6 w-6" />
+          ) : (
+            <ArrowLeftIcon className="h-6 w-6" />
+          )}
+        </button>
+        <Progress step={step} />
+        <span className="w-11 shrink-0" />
       </div>
 
-      <div
-        key={step}
-        className="glass-card stagger mt-6 space-y-4 rounded-[2rem] p-4 md:p-6"
-      >
-        {step === STEP_BASICS && <StepBasics form={form} patch={patch} errors={errors} />}
-        {step === STEP_CATEGORY && (
-          <StepCategory form={form} patch={patch} errors={errors} />
+      <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-ink">
+        {editing && step === STEP_TYPE
+          ? "Edit activity"
+          : editing && step === LAST_STEP
+            ? "Review your changes"
+            : STEPS[step].title}
+      </h1>
+      <p className="mt-1 text-base text-soft">{STEPS[step].blurb}</p>
+
+      <div key={step} className="stagger mt-5 space-y-5">
+        {step === STEP_TYPE && (
+          <StepType form={form} patch={patch} errors={errors} />
         )}
-        {step === STEP_WHEN_WHERE && (
-          <StepWhenWhere form={form} patch={patch} errors={errors} />
+        {step === STEP_DETAILS && (
+          <StepDetails form={form} patch={patch} errors={errors} dev={dev} />
         )}
-        {step === STEP_PRICE && (
-          <StepPrice form={form} patch={patch} errors={errors} dev={dev} />
-        )}
-        {step === STEP_WHO && <StepWho form={form} patch={patch} errors={errors} />}
 
         {preview && price && (
           <>
-            <ActivityCard
-              activity={preview}
-              going={minCapacity}
-              host={host}
-              preview
-            />
-            <dl className="space-y-1 text-sm text-body">
-              <div className="flex justify-between gap-4">
-                <dt>Joiners pay</dt>
-                <dd className="font-semibold">
-                  {price.totalP === 0 ? "Free" : formatInr(price.totalP)}
-                </dd>
+            <div className="relative">
+              <ActivityCard
+                activity={preview}
+                going={minCapacity}
+                host={host}
+                preview
+              />
+              <button
+                type="button"
+                onClick={() => goTo(STEP_DETAILS)}
+                className="glass absolute top-3 right-3 inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-xs font-semibold text-ink"
+              >
+                <PencilIcon className="h-3.5 w-3.5" />
+                Edit
+              </button>
+            </div>
+            <div className="glass-card rounded-3xl px-4">
+              <div className="divide-y divide-line">
+                <p className={summaryRow}>
+                  <ClockIcon className="h-5 w-5 shrink-0 text-accent" />
+                  <span className="text-body">
+                    {formatDateTime(preview.startsAt)} –{" "}
+                    {formatTime(preview.endsAt)}
+                  </span>
+                </p>
+                <p className={summaryRow}>
+                  <MapPinIcon className="h-5 w-5 shrink-0 text-location" />
+                  <span className="text-body">
+                    {preview.venueName} · {preview.city}
+                  </span>
+                </p>
+                <p className={summaryRow}>
+                  <UsersIcon className="h-5 w-5 shrink-0 text-brand-700" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs text-muted">
+                      Who can join
+                    </span>
+                    <span className="block text-body">
+                      {VISIBILITY_META[preview.visibility].label}
+                    </span>
+                  </span>
+                </p>
+                <p className={summaryRow}>
+                  <span
+                    className="w-5 shrink-0 text-center text-base"
+                    aria-hidden="true"
+                  >
+                    ₹
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs text-muted">
+                      Joiners pay
+                    </span>
+                    <span className="block text-body">
+                      {price.totalP === 0 ? "Free" : formatInr(price.totalP)}
+                      {price.ticketP > 0 && (
+                        <span className="text-muted">
+                          {" "}
+                          · you receive {formatInr(price.hostReceivesP)} per
+                          ticket
+                        </span>
+                      )}
+                      {" · "}
+                      {preview.capacity} spots
+                    </span>
+                  </span>
+                </p>
               </div>
-              {price.ticketP > 0 && (
-                <div className="flex justify-between gap-4">
-                  <dt>You receive per ticket</dt>
-                  <dd className="font-semibold">
-                    {formatInr(price.hostReceivesP)}
-                  </dd>
-                </div>
-              )}
-              <div className="flex justify-between gap-4">
-                <dt>Who can join</dt>
-                <dd className="font-semibold">
-                  {VISIBILITY_META[preview.visibility].label}
-                </dd>
-              </div>
-            </dl>
+            </div>
             {publishError && (
               <p
                 role="alert"
@@ -253,33 +383,26 @@ function WizardForm({
         )}
       </div>
 
-      {/* Sticky on phones so the actions stay reachable on tall steps; the tab
+      {/* Sticky on phones so the action stays reachable on tall steps; the tab
           bar is hidden on this route (AppShell). */}
-      <div className="sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 mt-4 flex gap-2 rounded-[1.75rem] max-md:glass max-md:p-2 md:static">
-        <Button variant="ghost" onClick={cancel}>
-          Cancel
-        </Button>
-        {step > 0 && (
-          <Button variant="secondary" onClick={() => setStep(step - 1)}>
-            Back
-          </Button>
-        )}
+      <div className="sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 mt-5 rounded-[1.75rem] max-md:glass max-md:p-2 md:static">
         {step < LAST_STEP ? (
-          <Button className="flex-1" onClick={next}>
+          <Button className="w-full" onClick={next}>
             Next
+            <ArrowRightIcon className="h-4 w-4" />
           </Button>
         ) : (
-          <Button className="flex-1" onClick={publish} loading={saving}>
-            {editing ? "Save changes" : "Publish"}
+          <Button className="w-full" onClick={publish} loading={saving}>
+            {editing ? "Save changes" : "Create activity"}
           </Button>
         )}
       </div>
-      {!editing && (
-        <p className="mt-2 text-center text-xs text-muted">
+      {!editing && step === 0 && (
+        <p className="mt-3 text-center text-xs text-muted">
           Your draft saves automatically.{" "}
           <button
             type="button"
-            onClick={discardDraft}
+            onClick={startOver}
             className="min-h-11 font-semibold text-brand-700 hover:underline"
           >
             Start over
@@ -302,7 +425,7 @@ function WizardSkeleton() {
 function NothingToEdit() {
   return (
     <EmptyState
-        page
+      page
       emoji="🕵️"
       title="Nothing to edit here"
       body="This activity doesn't exist, was cancelled, or isn't yours."
@@ -354,7 +477,7 @@ export function HostWizard({ activityId }: { activityId?: string }) {
       }
       return (
         <EmptyState
-        page
+          page
           emoji="📡"
           title="Couldn't load this activity"
           body={error.message}

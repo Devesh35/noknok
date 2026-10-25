@@ -1,4 +1,4 @@
-import { COVER_PRESETS, SUBCATEGORIES } from "@/lib/activity";
+import { coverFor, SUBCATEGORIES } from "@/lib/activity";
 import type { Category, Setting } from "@/lib/types";
 
 // Guesses category, subcategory, indoor/outdoor and a cover from the title and
@@ -28,11 +28,37 @@ const KEYWORDS: Record<Category, Record<string, string[]>> = {
     volleyball: ["volleyball", "throwball"],
   },
   social: {
-    meetup: ["meetup", "meet up", "hangout", "hang out", "new in town", "new to the city"],
-    networking: ["networking", "founders", "startup", "professionals", "industry"],
-    language_exchange: ["language", "french", "spanish", "german", "japanese", "conversation practice"],
+    meetup: [
+      "meetup",
+      "meet up",
+      "hangout",
+      "hang out",
+      "new in town",
+      "new to the city",
+    ],
+    networking: [
+      "networking",
+      "founders",
+      "startup",
+      "professionals",
+      "industry",
+    ],
+    language_exchange: [
+      "language",
+      "french",
+      "spanish",
+      "german",
+      "japanese",
+      "conversation practice",
+    ],
     book_club: ["book club", "reading", "novel", "author"],
-    volunteering: ["volunteer", "ngo", "charity", "donation drive", "teach kids"],
+    volunteering: [
+      "volunteer",
+      "ngo",
+      "charity",
+      "donation drive",
+      "teach kids",
+    ],
     cleanup: ["cleanup", "clean-up", "clean up", "plogging"],
     coffee: ["coffee", "chai", "cafe chat", "catch up"],
   },
@@ -48,7 +74,15 @@ const KEYWORDS: Record<Category, Record<string, string[]>> = {
   games: {
     board_games: ["board game", "catan", "monopoly", "ludo", "carrom"],
     card_games: ["card game", "poker", "uno", "rummy", "teen patti"],
-    video_games: ["video game", "gaming", "fifa", "valorant", "playstation", "xbox", "lan party"],
+    video_games: [
+      "video game",
+      "gaming",
+      "fifa",
+      "valorant",
+      "playstation",
+      "xbox",
+      "lan party",
+    ],
     quiz: ["quiz", "trivia", "pub quiz"],
     escape_room: ["escape room", "mystery room"],
     chess: ["chess"],
@@ -58,7 +92,14 @@ const KEYWORDS: Record<Category, Record<string, string[]>> = {
   food: {
     dinner: ["dinner", "supper", "restaurant night"],
     brunch: ["brunch", "breakfast"],
-    street_food: ["street food", "chaat", "vada pav", "food walk", "food crawl", "khau galli"],
+    street_food: [
+      "street food",
+      "chaat",
+      "vada pav",
+      "food walk",
+      "food crawl",
+      "khau galli",
+    ],
     cooking: ["cook", "cooking", "bake", "baking", "recipe"],
     potluck: ["potluck", "bring a dish"],
     cafe_hopping: ["cafe hop", "café hop", "cafes", "cafés"],
@@ -76,7 +117,15 @@ const KEYWORDS: Record<Category, Record<string, string[]>> = {
     running: ["run", "running", "5k", "10k", "marathon", "jog"],
     hiit: ["hiit", "bootcamp", "boot camp", "circuit", "calisthenics"],
     pilates: ["pilates"],
-    martial_arts: ["boxing", "mma", "karate", "jiu jitsu", "kickboxing", "muay thai", "self defence"],
+    martial_arts: [
+      "boxing",
+      "mma",
+      "karate",
+      "jiu jitsu",
+      "kickboxing",
+      "muay thai",
+      "self defence",
+    ],
     dance: ["dance", "zumba", "salsa", "bollywood dance", "hip hop"],
   },
   music: {
@@ -85,15 +134,34 @@ const KEYWORDS: Record<Category, Record<string, string[]>> = {
     karaoke: ["karaoke", "sing along", "singalong"],
     dj_night: ["dj", "techno", "house music", "edm", "club night"],
     open_mic: ["open mic"],
-    classical: ["classical", "carnatic", "hindustani", "sitar", "tabla", "symphony"],
+    classical: [
+      "classical",
+      "carnatic",
+      "hindustani",
+      "sitar",
+      "tabla",
+      "symphony",
+    ],
   },
   entertainment: {
     movie: ["movie", "film", "cinema", "screening", "watch party"],
     standup: ["stand-up", "standup", "comedy", "comedian", "improv"],
     theatre: ["theatre", "theater", "play", "drama", "musical"],
     exhibition: ["exhibition", "museum", "gallery", "art show"],
-    amusement_park: ["amusement park", "imagica", "theme park", "water park", "essel world"],
-    live_sports: ["screening", "watch the match", "ipl", "world cup", "match night"],
+    amusement_park: [
+      "amusement park",
+      "imagica",
+      "theme park",
+      "water park",
+      "essel world",
+    ],
+    live_sports: [
+      "screening",
+      "watch the match",
+      "ipl",
+      "world cup",
+      "match night",
+    ],
   },
   event: {
     birthday: ["birthday", "bday", "turning"],
@@ -110,48 +178,57 @@ const KEYWORDS: Record<Category, Record<string, string[]>> = {
 
 // Subcategories that usually happen outside.
 const OUTDOOR = new Set([
-  "football", "cricket", "tennis", "cycling", "volleyball",
-  "trek", "hike", "camping", "beach", "picnic", "road_trip", "stargazing", "cleanup",
-  "running", "photography", "street_food", "amusement_park",
+  "football",
+  "cricket",
+  "tennis",
+  "cycling",
+  "volleyball",
+  "trek",
+  "hike",
+  "camping",
+  "beach",
+  "picnic",
+  "road_trip",
+  "stargazing",
+  "cleanup",
+  "running",
+  "photography",
+  "street_food",
+  "amusement_park",
 ]);
-
-const COVER_FOR: Partial<Record<Category, string>> = {
-  sports: "Football",
-  fitness: "Gym",
-  outdoors: "Trek",
-  games: "Board games",
-  event: "Celebration",
-  music: "Stage",
-  entertainment: "Stage",
-};
-
-function coverFor(category: Category, subcategory: string): string {
-  const label = subcategory === "yoga" ? "Yoga" : COVER_FOR[category];
-  return COVER_PRESETS.find((c) => c.label === label)?.url ?? COVER_PRESETS[0].url;
-}
 
 function countHits(text: string, words: string[]): number {
   let hits = 0;
   for (const word of words) {
-    const pattern = new RegExp(`(^|[^a-z0-9])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
+    const pattern = new RegExp(
+      `(^|[^a-z0-9])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+      "i",
+    );
     if (pattern.test(text)) hits += word.includes(" ") ? 2 : 1; // phrases are stronger
   }
   return hits;
 }
 
 // null when nothing in the text points anywhere.
-export function guessActivity(title: string, description: string): Guess | null {
+export function guessActivity(
+  title: string,
+  description: string,
+): Guess | null {
   // The title counts double: it is what the host chose to lead with.
   const text = `${title} ${title} ${description}`.toLowerCase();
-  let best: { category: Category; subcategory: string; score: number } | null = null;
+  let best: { category: Category; subcategory: string; score: number } | null =
+    null;
   for (const category of Object.keys(KEYWORDS) as Category[]) {
     for (const [subcategory, words] of Object.entries(KEYWORDS[category])) {
       const score = countHits(text, words);
-      if (score > 0 && (!best || score > best.score)) best = { category, subcategory, score };
+      if (score > 0 && (!best || score > best.score))
+        best = { category, subcategory, score };
     }
   }
   if (!best) return null;
-  const known = SUBCATEGORIES[best.category].some((s) => s.value === best.subcategory);
+  const known = SUBCATEGORIES[best.category].some(
+    (s) => s.value === best.subcategory,
+  );
   const subcategory = known ? best.subcategory : "other";
   return {
     category: best.category,

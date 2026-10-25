@@ -11,10 +11,10 @@ import {
   ArrowLeftIcon,
   BellIcon,
   ChevronDownIcon,
-  CompassIcon,
   HomeIcon,
   PlusIcon,
   SearchIcon,
+  SettingsIcon,
   UserIcon,
 } from "@/components/icons";
 
@@ -37,7 +37,13 @@ export function Logo({ className = "" }: { className?: string }) {
   );
 }
 
-function UnreadDot({ count, className = "" }: { count: number; className?: string }) {
+export function UnreadDot({
+  count,
+  className = "",
+}: {
+  count: number;
+  className?: string;
+}) {
   if (count === 0) return null;
   return (
     <span
@@ -64,46 +70,45 @@ export function HeaderAccount({ className = "" }: { className?: string }) {
     (user !== null && pathname === `/u/${user.handle}`);
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-          {user ? (
-            <>
-              <Link
-                href="/notifications"
-                aria-label="Notifications"
-                className={`inline-flex h-11 w-11 items-center justify-center rounded-full border transition duration-200 ${
-                  onAlerts
-                    ? "border-brand-600/40 bg-brand-600/15 text-brand-700"
-                    : "border-line bg-surface/60 text-soft hover:bg-surface-hi hover:text-ink"
-                }`}
-              >
-                <span className="relative">
-                  <BellIcon className="h-5 w-5" />
-                  <UnreadDot count={unread} />
-                </span>
-              </Link>
-              <Link
-                href="/u/me"
-                className={`inline-flex min-h-11 items-center gap-2 rounded-full border py-1 pr-2 pl-1 text-sm font-semibold transition duration-200 ${
-                  onProfile
-                    ? "border-brand-600/40 bg-brand-600/15 text-ink"
-                    : "border-line bg-surface/60 text-ink hover:bg-surface-hi"
-                }`}
-              >
-                <Avatar user={user} size="md" className="h-8 w-8 text-xs" />
-                <span className="max-w-32 truncate">{user.name}</span>
-                <ChevronDownIcon className="h-4 w-4 text-muted" />
-              </Link>
-            </>
-          ) : (
-            <>
-              <Link href="/login" className={buttonClass("ghost")}>
-                Log in
-              </Link>
-              <Link href="/register" className={buttonClass("primary")}>
-                Sign up
-              </Link>
-            </>
-          )}
-
+      {user ? (
+        <>
+          <Link
+            href="/notifications"
+            aria-label="Notifications"
+            className={`inline-flex h-11 w-11 items-center justify-center rounded-full border transition duration-200 ${
+              onAlerts
+                ? "border-brand-600/40 bg-brand-600/15 text-brand-700"
+                : "border-line bg-surface/60 text-soft hover:bg-surface-hi hover:text-ink"
+            }`}
+          >
+            <span className="relative">
+              <BellIcon className="h-5 w-5" />
+              <UnreadDot count={unread} />
+            </span>
+          </Link>
+          <Link
+            href="/u/me"
+            className={`inline-flex min-h-11 items-center gap-2 rounded-full border py-1 pr-2 pl-1 text-sm font-semibold transition duration-200 ${
+              onProfile
+                ? "border-brand-600/40 bg-brand-600/15 text-ink"
+                : "border-line bg-surface/60 text-ink hover:bg-surface-hi"
+            }`}
+          >
+            <Avatar user={user} size="md" className="h-8 w-8 text-xs" />
+            <span className="max-w-32 truncate">{user.name}</span>
+            <ChevronDownIcon className="h-4 w-4 text-muted" />
+          </Link>
+        </>
+      ) : (
+        <>
+          <Link href="/login" className={buttonClass("ghost")}>
+            Log in
+          </Link>
+          <Link href="/register" className={buttonClass("primary")}>
+            Sign up
+          </Link>
+        </>
+      )}
     </div>
   );
 }
@@ -145,9 +150,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const onHost = pathname.startsWith("/host");
   const onAlerts = pathname === "/notifications";
   const onProfile =
-    pathname === "/u/me" ||
-    pathname === "/settings" ||
-    (user !== null && pathname === `/u/${user.handle}`);
+    pathname === "/u/me" || (user !== null && pathname === `/u/${user.handle}`);
+  const onSettings = pathname === "/settings";
 
   const goSearch = () => {
     router.push("/?search=1");
@@ -181,10 +185,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <HomeIcon className={sideIconClass(onHome)} />
             Home
           </Link>
-          <button type="button" onClick={goSearch} className={sideLinkClass(false)}>
-            <CompassIcon className={sideIconClass(false)} />
-            Discover
-          </button>
           <Link href="/host" className={sideLinkClass(onHost)}>
             <PlusIcon className={sideIconClass(onHost)} />
             Host
@@ -205,20 +205,32 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <UserIcon className={sideIconClass(onProfile)} />
                 Profile
               </Link>
+              <Link href="/settings" className={sideLinkClass(onSettings)}>
+                <SettingsIcon className={sideIconClass(onSettings)} />
+                Settings
+              </Link>
             </>
           )}
         </nav>
 
         <div className="relative mt-auto overflow-hidden rounded-[1.75rem] border border-brand-600/30 bg-linear-to-b from-brand-600/20 to-surface p-5 text-center">
           <span className="pointer-events-none absolute -top-10 left-1/2 h-28 w-28 -translate-x-1/2 rounded-full bg-brand-500/30 blur-2xl" />
-          <span className="relative block text-3xl drop-shadow" aria-hidden="true">
+          <span
+            className="relative block text-3xl drop-shadow"
+            aria-hidden="true"
+          >
             👑
           </span>
-          <p className="relative mt-2 text-base font-bold text-ink">Host your first hangout</p>
+          <p className="relative mt-2 text-base font-bold text-ink">
+            Host your first hangout
+          </p>
           <p className="relative mt-1 text-xs text-soft">
             Bring people together around what you love.
           </p>
-          <Link href="/host" className={buttonClass("primary", "relative mt-4 w-full")}>
+          <Link
+            href="/host"
+            className={buttonClass("primary", "relative mt-4 w-full")}
+          >
             Host something
             <ArrowLeftIcon className="h-4 w-4 rotate-180" />
           </Link>
@@ -232,18 +244,20 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <div className="flex h-full items-center gap-3 px-6">
           <button
-              type="button"
-              onClick={goSearch}
-              className="flex min-h-11 w-full max-w-md items-center gap-3 rounded-full border border-line bg-surface/60 px-4 text-left text-sm text-faint transition duration-200 hover:border-brand-600/50 hover:bg-surface-hi"
-            >
-              <SearchIcon className="h-5 w-5 shrink-0" />
-              Search people, hangouts, or topics…
-            </button>
+            type="button"
+            onClick={goSearch}
+            className="flex min-h-11 w-full max-w-md items-center gap-3 rounded-full border border-line bg-surface/60 px-4 text-left text-sm text-faint transition duration-200 hover:border-brand-600/50 hover:bg-surface-hi"
+          >
+            <SearchIcon className="h-5 w-5 shrink-0" />
+            Search people, hangouts, or topics…
+          </button>
           <HeaderAccount className="ml-auto" />
         </div>
       </header>
 
-      <main className={`flex-1 md:pb-0 ${SIDEBAR_CLASS} ${showTabs ? "pb-28" : ""}`}>
+      <main
+        className={`flex-1 md:pb-0 ${SIDEBAR_CLASS} ${showTabs ? "pb-28" : ""}`}
+      >
         {children}
       </main>
 
@@ -265,14 +279,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             Home
           </Link>
-          <Link
-            href="/?search=1"
-            className={tabClass(false)}
-            onClick={() => window.dispatchEvent(new Event(FOCUS_SEARCH_EVENT))}
-          >
-            <SearchIcon className="h-6 w-6" />
-            Search
-          </Link>
           <Link href="/host" className={tabClass(onHost)}>
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/40">
               <PlusIcon className="h-5 w-5" />
@@ -286,7 +292,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             Alerts
           </Link>
-          <Link href="/u/me" className={tabClass(onProfile)}>
+          <Link href="/u/me" className={tabClass(onProfile || onSettings)}>
             <UserIcon className="h-6 w-6" />
             Profile
           </Link>

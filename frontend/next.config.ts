@@ -22,6 +22,7 @@ const CSP = {
     "https://*.ggpht.com",
     "https://*.googleusercontent.com",
     "https://*.tile.openstreetmap.org",
+    "https://tile.openstreetmap.org",
     ...RAZORPAY,
   ],
   "connect-src": ["'self'", ...GOOGLE, ...RAZORPAY, ...(dev ? ["ws://localhost:*", "http://localhost:*"] : [])],

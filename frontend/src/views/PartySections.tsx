@@ -6,7 +6,7 @@ import { Avatar, AvatarStack } from "@/components/Avatar";
 import { CategoryBadge, VisibilityBadge } from "@/components/Badge";
 import { Button, buttonClass } from "@/components/Button";
 import { CalendarIcon, MapPinIcon } from "@/components/icons";
-import { VenueMap } from "@/components/VenueMap";
+import { VenueMapStatic } from "@/components/VenueMapStatic";
 import { addressLine, mapsUrl } from "@/lib/activity";
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import {
@@ -104,11 +104,10 @@ export function PartyHeader({
         </p>
       </div>
       {hasPin && (
-        <VenueMap
+        <VenueMapStatic
           center={{ lat: activity.lat!, lng: activity.lng! }}
-          zoomed
-          focus={null}
-          label={`Map showing ${activity.venueName}`}
+          venueName={activity.venueName}
+          mapsHref={mapsUrl(activity)}
           className="h-72 lg:h-[28rem]"
         />
       )}

@@ -12,15 +12,26 @@ interface GoogleBits {
 
 type MarkerPosition = google.maps.marker.AdvancedMarkerElement["position"];
 
-function latLngOf(position: MarkerPosition): { lat: number; lng: number } | null {
+function latLngOf(
+  position: MarkerPosition,
+): { lat: number; lng: number } | null {
   if (!position) return null;
-  if (position instanceof google.maps.LatLng) return { lat: position.lat(), lng: position.lng() };
+  if (position instanceof google.maps.LatLng)
+    return { lat: position.lat(), lng: position.lng() };
   return { lat: Number(position.lat), lng: Number(position.lng) };
 }
 
 // Google Maps with a draggable Advanced Marker; same behaviour as the
 // OpenStreetMap version.
-export function VenueMapGoogle({ center, zoomed, focus, onDrop, label, className }: VenueMapProps) {
+export function VenueMapGoogle({
+  center,
+  zoomed,
+  focus,
+  onDrop,
+  bounds,
+  label,
+  className,
+}: VenueMapProps) {
   const editable = onDrop !== undefined;
   const containerRef = useRef<HTMLDivElement>(null);
   const bits = useRef<GoogleBits | null>(null);
@@ -36,12 +47,18 @@ export function VenueMapGoogle({ center, zoomed, focus, onDrop, label, className
       const map = new Map(containerRef.current, {
         mapId: GOOGLE_MAPS.mapId,
         center,
-        zoom: zoomed ? 16 : 12,
+        zoom: zoomed ? 17 : 14,
         gestureHandling: "cooperative",
         clickableIcons: false,
         streetViewControl: false,
         mapTypeControl: false,
         fullscreenControl: false,
+        ...(bounds
+          ? {
+              restriction: { latLngBounds: bounds, strictBounds: true },
+              minZoom: 11,
+            }
+          : {}),
       });
       const marker = new AdvancedMarkerElement({
         map,
@@ -75,7 +92,7 @@ export function VenueMapGoogle({ center, zoomed, focus, onDrop, label, className
   useEffect(() => {
     if (!focus || !bits.current) return;
     bits.current.map.setCenter(focus);
-    bits.current.map.setZoom(16);
+    bits.current.map.setZoom(17);
     bits.current.marker.position = focus;
   }, [focus]);
 

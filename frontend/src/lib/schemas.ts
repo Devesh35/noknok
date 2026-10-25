@@ -4,7 +4,9 @@ import { z } from "zod";
 import { SUBCATEGORIES } from "@/lib/activity";
 import { CATEGORIES_LIST, CITIES } from "@/lib/types";
 
-export const phoneSchema = z.string().regex(/^\d{10}$/, "Enter a 10-digit phone number");
+export const phoneSchema = z
+  .string()
+  .regex(/^\d{10}$/, "Enter a 10-digit phone number");
 const city = z.enum(CITIES);
 const category = z.enum(CATEGORIES_LIST);
 const isoDate = z.iso.datetime({ offset: true });
@@ -19,7 +21,9 @@ const subcategoryFits: [
 ];
 
 // The Firebase ID token the browser got after entering the SMS code.
-export const firebaseExchangeInput = z.object({ idToken: z.string().min(20).max(8192) });
+export const firebaseExchangeInput = z.object({
+  idToken: z.string().min(20).max(8192),
+});
 
 // The phone number comes from the signup token, which the server signed after
 // Firebase proved the number; the client can't pick a different one.
@@ -35,10 +39,19 @@ export const HANDLE_PATTERN = /^[a-z0-9_]{3,20}$/;
 export const profilePatch = z
   .object({
     name: z.string().trim().min(1).max(60),
-    handle: z.string().trim().toLowerCase().regex(HANDLE_PATTERN, "3-20 letters, numbers or _"),
+    handle: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(HANDLE_PATTERN, "3-20 letters, numbers or _"),
     bio: z.string().trim().max(200),
     city,
-    avatarUrl: z.url().optional(),
+    // An image uploaded through POST /api/images; null clears the photo.
+    avatarUrl: z
+      .string()
+      .regex(/^\/api\/images\/[A-Za-z0-9_-]+$/, "Upload a photo first")
+      .nullable()
+      .optional(),
     interests: z.array(category).max(9),
   })
   .partial();
@@ -61,23 +74,27 @@ export const activityInput = z
     category,
     subcategory: z.string(),
     description: z.string().trim().max(2000),
-  coverUrl: z.string().optional(),
-  venueName: z.string().trim().min(1).max(80),
-  address: z.string().trim().max(200),
-  city,
-  area: z.string().trim().max(40).optional(),
-  lat: z.number().optional(),
-  lng: z.number().optional(),
-  startsAt: isoDate,
-  endsAt: isoDate,
-  priceP: z.number().int().min(0).max(100_000_00),
-  capacity: z.number().int().min(1).max(500),
-  visibility: z.enum(["friends", "friends_of_friends", "open"]),
-  setting: z.enum(["indoor", "outdoor"]),
-  beginnerFriendly: z.boolean(),
-  tags: z.array(z.string().trim().min(1).max(60)).max(10),
+    coverUrl: z.string().optional(),
+    venueName: z.string().trim().min(1).max(80),
+    address: z.string().trim().max(200),
+    city,
+    area: z.string().trim().max(40).optional(),
+    lat: z.number().optional(),
+    lng: z.number().optional(),
+    startsAt: isoDate,
+    endsAt: isoDate,
+    priceP: z.number().int().min(0).max(100_000_00),
+    capacity: z.number().int().min(1).max(500),
+    visibility: z.enum(["friends", "friends_of_friends", "open"]),
+    setting: z.enum(["indoor", "outdoor"]),
+    beginnerFriendly: z.boolean(),
+    tags: z.array(z.string().trim().min(1).max(60)).max(10),
     waitlistMode: z.enum(["auto", "approval"]),
-    refundCutoffHours: z.number().int().min(0).max(24 * 14),
+    refundCutoffHours: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 14),
   })
   .refine(...subcategoryFits)
   .refine((a) => Date.parse(a.endsAt) > Date.parse(a.startsAt), {

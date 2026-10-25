@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CATEGORY_META, coverEmoji } from "@/lib/activity";
+import { CATEGORY_META, coverEmoji, coverFor } from "@/lib/activity";
 import type { Activity } from "@/lib/types";
 
 // Activity cover: the photo from coverUrl over a category gradient. The
@@ -20,7 +20,11 @@ export function Cover({
 }) {
   const meta = CATEGORY_META[activity.category];
   const [failed, setFailed] = useState(false);
-  const hasPhoto = Boolean(activity.coverUrl) && !failed;
+  // No photo of its own: the stock one for the sub-activity. The emoji only
+  // shows if that fails to load too.
+  const src =
+    activity.coverUrl || coverFor(activity.category, activity.subcategory);
+  const hasPhoto = !failed;
 
   return (
     <div
@@ -31,7 +35,7 @@ export function Cover({
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={activity.coverUrl}
+            src={src}
             alt=""
             loading="lazy"
             onError={() => setFailed(true)}

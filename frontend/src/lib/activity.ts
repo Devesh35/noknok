@@ -1,16 +1,56 @@
+import { COVER_FILES } from "@/lib/covers";
 import type { Activity, Category, City, Visibility } from "@/lib/types";
 
-export const CATEGORY_META: Record<Category, { label: string; emoji: string; gradient: string }> = {
-  sports: { label: "Sports", emoji: "⚽", gradient: "from-emerald-500 to-teal-600" },
-  social: { label: "Social", emoji: "🎉", gradient: "from-fuchsia-500 to-violet-600" },
-  outdoors: { label: "Outdoors", emoji: "🌲", gradient: "from-sky-500 to-blue-600" },
-  games: { label: "Games", emoji: "🎲", gradient: "from-amber-400 to-orange-500" },
+export const CATEGORY_META: Record<
+  Category,
+  { label: string; emoji: string; gradient: string }
+> = {
+  sports: {
+    label: "Sports",
+    emoji: "⚽",
+    gradient: "from-emerald-500 to-teal-600",
+  },
+  social: {
+    label: "Social",
+    emoji: "🎉",
+    gradient: "from-fuchsia-500 to-violet-600",
+  },
+  outdoors: {
+    label: "Outdoors",
+    emoji: "🌲",
+    gradient: "from-sky-500 to-blue-600",
+  },
+  games: {
+    label: "Games",
+    emoji: "🎲",
+    gradient: "from-amber-400 to-orange-500",
+  },
   food: { label: "Food", emoji: "🍽️", gradient: "from-pink-500 to-rose-500" },
-  creative: { label: "Creative", emoji: "🎨", gradient: "from-rose-400 to-orange-400" },
-  fitness: { label: "Fitness", emoji: "💪", gradient: "from-orange-500 to-red-500" },
-  music: { label: "Music", emoji: "🎵", gradient: "from-violet-500 to-indigo-600" },
-  entertainment: { label: "Entertainment", emoji: "🎬", gradient: "from-indigo-500 to-purple-600" },
-  event: { label: "Event", emoji: "🎊", gradient: "from-pink-500 to-fuchsia-600" },
+  creative: {
+    label: "Creative",
+    emoji: "🎨",
+    gradient: "from-rose-400 to-orange-400",
+  },
+  fitness: {
+    label: "Fitness",
+    emoji: "💪",
+    gradient: "from-orange-500 to-red-500",
+  },
+  music: {
+    label: "Music",
+    emoji: "🎵",
+    gradient: "from-violet-500 to-indigo-600",
+  },
+  entertainment: {
+    label: "Entertainment",
+    emoji: "🎬",
+    gradient: "from-indigo-500 to-purple-600",
+  },
+  event: {
+    label: "Event",
+    emoji: "🎊",
+    gradient: "from-pink-500 to-fuchsia-600",
+  },
 };
 
 export interface Subcategory {
@@ -130,32 +170,91 @@ export const SUBCATEGORIES: Record<Category, Subcategory[]> = {
 // Missing entries ("other", or a sub-category added later) fall back to the
 // category's emoji.
 const SUBCATEGORY_EMOJI: Record<string, string> = {
-  football: "⚽", cricket: "🏏", badminton: "🏸", tennis: "🎾", basketball: "🏀",
-  table_tennis: "🏓", swimming: "🏊", cycling: "🚴", volleyball: "🏐",
-  meetup: "👋", networking: "🤝", language_exchange: "🗣️", book_club: "📚",
-  volunteering: "🙌", cleanup: "🧹", coffee: "☕",
-  trek: "🥾", hike: "⛰️", camping: "🏕️", beach: "🏖️", picnic: "🧺", road_trip: "🚗",
+  football: "⚽",
+  cricket: "🏏",
+  badminton: "🏸",
+  tennis: "🎾",
+  basketball: "🏀",
+  table_tennis: "🏓",
+  swimming: "🏊",
+  cycling: "🚴",
+  volleyball: "🏐",
+  meetup: "👋",
+  networking: "🤝",
+  language_exchange: "🗣️",
+  book_club: "📚",
+  volunteering: "🙌",
+  cleanup: "🧹",
+  coffee: "☕",
+  trek: "🥾",
+  hike: "⛰️",
+  camping: "🏕️",
+  beach: "🏖️",
+  picnic: "🧺",
+  road_trip: "🚗",
   stargazing: "🔭",
-  board_games: "🎲", card_games: "🃏", video_games: "🎮", quiz: "❓", escape_room: "🔐",
-  chess: "♟️", bowling: "🎳", arcade: "🕹️",
-  dinner: "🍽️", brunch: "🥞", street_food: "🌮", cooking: "🍳", potluck: "🥘",
+  board_games: "🎲",
+  card_games: "🃏",
+  video_games: "🎮",
+  quiz: "❓",
+  escape_room: "🔐",
+  chess: "♟️",
+  bowling: "🎳",
+  arcade: "🕹️",
+  dinner: "🍽️",
+  brunch: "🥞",
+  street_food: "🌮",
+  cooking: "🍳",
+  potluck: "🥘",
   cafe_hopping: "☕",
-  art: "🎨", photography: "📷", writing: "✍️", crafts: "✂️", pottery: "🏺",
-  gym: "🏋️", yoga: "🧘", running: "🏃", hiit: "🔥", pilates: "🤸", martial_arts: "🥋",
+  art: "🎨",
+  photography: "📷",
+  writing: "✍️",
+  crafts: "✂️",
+  pottery: "🏺",
+  gym: "🏋️",
+  yoga: "🧘",
+  running: "🏃",
+  hiit: "🔥",
+  pilates: "🤸",
+  martial_arts: "🥋",
   dance: "💃",
-  concert: "🎤", jam: "🎸", karaoke: "🎙️", dj_night: "🎧", open_mic: "🎤", classical: "🎻",
-  movie: "🎬", standup: "😂", theatre: "🎭", exhibition: "🖼️", amusement_park: "🎢",
+  concert: "🎤",
+  jam: "🎸",
+  karaoke: "🎙️",
+  dj_night: "🎧",
+  open_mic: "🎤",
+  classical: "🎻",
+  movie: "🎬",
+  standup: "😂",
+  theatre: "🎭",
+  exhibition: "🖼️",
+  amusement_park: "🎢",
   live_sports: "📺",
-  birthday: "🎂", marriage: "💍", bachelor: "🥳", bachelorette: "👰", reception: "🥂",
-  party: "🎉", get_together: "🤝", anniversary: "💞", farewell: "👋",
+  birthday: "🎂",
+  marriage: "💍",
+  bachelor: "🥳",
+  bachelorette: "👰",
+  reception: "🥂",
+  party: "🎉",
+  get_together: "🤝",
+  anniversary: "💞",
+  farewell: "👋",
 };
 
 export function coverEmoji(category: Category, subcategory?: string): string {
-  return (subcategory && SUBCATEGORY_EMOJI[subcategory]) || CATEGORY_META[category].emoji;
+  return (
+    (subcategory && SUBCATEGORY_EMOJI[subcategory]) ||
+    CATEGORY_META[category].emoji
+  );
 }
 
-export function subcategoryLabel(category: Category, subcategory?: string): string {
-  const found = subcategory && SUBCATEGORIES[category].find((s) => s.value === subcategory);
+export function subcategoryLabel(
+  category: Category,
+  subcategory?: string,
+): string {
+  const found =
+    subcategory && SUBCATEGORIES[category].find((s) => s.value === subcategory);
   return found ? found.label : CATEGORY_META[category].label;
 }
 
@@ -165,9 +264,21 @@ export const CATEGORIES = Object.keys(CATEGORY_META) as Category[];
 // the city without typing an address.
 export const AREAS_BY_CITY: Record<City, readonly string[]> = {
   Ulhasnagar: ["Camp 1", "Camp 2", "Camp 3", "Camp 4", "Camp 5", "Shahad"],
-  Ambernath: ["Ambernath East", "Ambernath West", "Badlapur Road", "Shivaji Nagar"],
+  Ambernath: [
+    "Ambernath East",
+    "Ambernath West",
+    "Badlapur Road",
+    "Shivaji Nagar",
+  ],
   Vitthalwadi: ["Vitthalwadi Station", "Nehru Chowk", "Hill Line"],
-  Kalyan: ["Kalyan East", "Kalyan West", "Khadakpada", "Dombivli East", "Dombivli West", "Titwala"],
+  Kalyan: [
+    "Kalyan East",
+    "Kalyan West",
+    "Khadakpada",
+    "Dombivli East",
+    "Dombivli West",
+    "Titwala",
+  ],
 };
 
 export function areasFor(city: City | ""): readonly string[] {
@@ -175,8 +286,15 @@ export function areasFor(city: City | ""): readonly string[] {
 }
 
 // "Who can join?", from most to least open.
-export const VISIBILITY_META: Record<Visibility, { label: string; emoji: string; help: string }> = {
-  open: { label: "Anyone", emoji: "🌍", help: "Anyone on NokNok can see and join." },
+export const VISIBILITY_META: Record<
+  Visibility,
+  { label: string; emoji: string; help: string }
+> = {
+  open: {
+    label: "Anyone",
+    emoji: "🌍",
+    help: "Anyone on NokNok can see and join.",
+  },
   friends_of_friends: {
     label: "Friends of friends",
     emoji: "👥",
@@ -210,11 +328,16 @@ function uniqueParts(parts: string[]): string[] {
   return out;
 }
 
-type Place = Pick<Activity, "venueName" | "address"> & Partial<Pick<Activity, "city">>;
+type Place = Pick<Activity, "venueName" | "address"> &
+  Partial<Pick<Activity, "city">>;
 
 // "Venue, street, city" for maps, calendars and shared text.
 export function placeText(activity: Place): string {
-  return uniqueParts([activity.venueName, activity.address, activity.city ?? ""]).join(", ");
+  return uniqueParts([
+    activity.venueName,
+    activity.address,
+    activity.city ?? "",
+  ]).join(", ");
 }
 
 // The line shown under the venue name: the address without what the venue
@@ -222,8 +345,14 @@ export function placeText(activity: Place): string {
 export function addressLine(activity: Place): string {
   const venue = activity.venueName.trim().toLowerCase();
   const city = (activity.city ?? "").toLowerCase();
-  const rest = uniqueParts([activity.address]).filter((p) => p.toLowerCase() !== venue);
-  if (rest.length === 0 || (rest.length === 1 && rest[0].toLowerCase() === city)) return "";
+  const rest = uniqueParts([activity.address]).filter(
+    (p) => p.toLowerCase() !== venue,
+  );
+  if (
+    rest.length === 0 ||
+    (rest.length === 1 && rest[0].toLowerCase() === city)
+  )
+    return "";
   return rest.join(", ");
 }
 
@@ -237,7 +366,8 @@ export function mapsUrl(activity: Activity): string {
 
 // Fallback coordinates for activities without an exact location.
 export const CITY_CENTERS: Record<City, { lat: number; lng: number }> = {
-  Ulhasnagar: { lat: 19.2215, lng: 73.1645 },
+  // Ulhasnagar railway station: where the picker's pin starts.
+  Ulhasnagar: { lat: 19.2186, lng: 73.1586 },
   Ambernath: { lat: 19.2096, lng: 73.186 },
   Vitthalwadi: { lat: 19.213, lng: 73.1545 },
   Kalyan: { lat: 19.2403, lng: 73.1305 },
@@ -245,21 +375,74 @@ export const CITY_CENTERS: Record<City, { lat: number; lng: number }> = {
 
 // The launch cities in one box (Kalyan to Ambernath). Venue search offers
 // nothing outside it.
-export const LAUNCH_AREA = { south: 19.14, west: 73.05, north: 19.32, east: 73.28 } as const;
+export const LAUNCH_AREA = {
+  south: 19.14,
+  west: 73.05,
+  north: 19.32,
+  east: 73.28,
+} as const;
+
+// A name for a pinned spot that the map didn't name: the locality, else the
+// first comma part of the address that is a word rather than a house number
+// ("937/55, Ramayan Nagar, Ulhasnagar…" -> "Ramayan Nagar").
+export function placeNameFrom(
+  area: string | undefined,
+  address: string,
+): string {
+  if (area?.trim()) return area.trim();
+  return (
+    address
+      .split(",")
+      .map((part) => part.trim())
+      .find((part) => /[a-z]{3,}/i.test(part)) ?? ""
+  );
+}
 
 export interface Coords {
   lat: number;
   lng: number;
 }
 
-export function coordsOf(activity: Pick<Activity, "lat" | "lng" | "city">): Coords {
+export function coordsOf(
+  activity: Pick<Activity, "lat" | "lng" | "city">,
+): Coords {
   return activity.lat !== undefined && activity.lng !== undefined
     ? { lat: activity.lat, lng: activity.lng }
     : CITY_CENTERS[activity.city];
 }
 
-
 // Bundled cover photos a host can pick from.
+// The stock photo for a plan with no photo of its own: the sub-activity's,
+// else the category's.
+export function coverFor(category: Category, subcategory?: string): string {
+  const files = COVER_FILES[category] ?? [];
+  const name =
+    subcategory && files.includes(subcategory) ? subcategory : "default";
+  return `/images/covers/${category}/${name}.jpg`;
+}
+
+// Stock covers to offer a host for this category: the picked sub-activity's
+// first, then the category's, then the rest of the category.
+export function coverOptions(
+  category: Category,
+  subcategory?: string,
+): { url: string; label: string }[] {
+  const files = COVER_FILES[category] ?? [];
+  const ordered = [
+    ...(subcategory && files.includes(subcategory) ? [subcategory] : []),
+    ...(files.includes("default") ? ["default"] : []),
+    ...files.filter((f) => f !== "default" && f !== subcategory),
+  ];
+  return ordered.map((name) => ({
+    url: `/images/covers/${category}/${name}.jpg`,
+    label:
+      name === "default"
+        ? CATEGORY_META[category].label
+        : subcategoryLabel(category, name),
+  }));
+}
+
+// Generic covers that suit any category.
 export const COVER_PRESETS: { url: string; label: string }[] = [
   { url: "/images/covers/a1.jpg", label: "Party lights" },
   { url: "/images/covers/a2.jpg", label: "Football" },

@@ -5,7 +5,7 @@ import { ViewTransition, type ReactNode } from "react";
 import { ActivityCard } from "@/components/ActivityCard";
 import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
-import { ListIcon, MapIcon } from "@/components/icons";
+import { ArrowRightIcon, ListIcon, MapIcon } from "@/components/icons";
 import { MapView } from "@/components/MapView";
 import { UserRow } from "@/components/UserBits";
 import { CITY_CENTERS } from "@/lib/activity";
@@ -15,9 +15,10 @@ import type { ActivityCardItem, City, Me, PersonResult } from "@/lib/types";
 
 const ROW_COUNT = 6;
 const FEW_SPOTS = 3; // "needs N more" threshold
-export const GRID = "grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
+export const GRID =
+  "grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 const ROW =
-  "no-scrollbar stagger-fade -mx-4 flex snap-x scroll-px-4 gap-4 overflow-x-auto px-4 pt-1 pb-4 md:-mx-8 md:scroll-px-8 md:px-8";
+  "no-scrollbar stagger-fade -mx-4 flex snap-x scroll-px-4 gap-4 overflow-x-auto px-4 pt-1 pb-4 md:-mx-8 md:scroll-px-8 md:px-8 xl:mx-0 xl:scroll-px-0 xl:px-0 xl:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]";
 export const SECTION_TITLE = "text-xl font-extrabold text-ink";
 
 // Saturday or Sunday within the coming week.
@@ -30,10 +31,13 @@ function Cards({
   items,
   scope,
   row = false,
+  canSave = false,
 }: {
   items: ActivityCardItem[];
   scope: string;
   row?: boolean;
+  // Logged in: the cards get a heart.
+  canSave?: boolean;
 }) {
   return (
     <div className={row ? ROW : `stagger-fade ${GRID}`}>
@@ -47,12 +51,26 @@ function Cards({
             friends={item.friends}
             locked={item.locked}
             mine={item.myJoin?.status === "going"}
+            interested={canSave ? item.interested : undefined}
             scope={scope}
-            className={row ? "w-80 shrink-0 snap-start md:w-96" : ""}
+            className={row ? "w-80 shrink-0 snap-start md:w-[22rem]" : ""}
           />
         </ViewTransition>
       ))}
     </div>
+  );
+}
+
+// "View all" lands on the complete list further down the page.
+function ViewAll({ label = "View all" }: { label?: string }) {
+  return (
+    <a
+      href="#nearby-heading"
+      className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-brand-700 hover:underline"
+    >
+      {label}
+      <ArrowRightIcon className="h-4 w-4" />
+    </a>
   );
 }
 
@@ -61,11 +79,13 @@ function Row({
   title,
   items,
   action,
+  canSave,
 }: {
   id: string;
   title: ReactNode;
   items: ActivityCardItem[];
   action?: ReactNode;
+  canSave: boolean;
 }) {
   if (items.length === 0) return null;
   return (
@@ -74,9 +94,9 @@ function Row({
         <h2 id={`${id}-heading`} className={SECTION_TITLE}>
           {title}
         </h2>
-        {action}
+        {action ?? <ViewAll />}
       </div>
-      <Cards items={items} scope={id} row />
+      <Cards items={items} scope={id} row canSave={canSave} />
     </section>
   );
 }
@@ -87,10 +107,12 @@ export function SearchResults({
   query,
   items,
   people,
+  user,
 }: {
   query: string;
   items: ActivityCardItem[];
   people: PersonResult[];
+  user: Me | null;
 }) {
   const results = items.filter((item) => !item.locked);
   return (
@@ -123,7 +145,7 @@ export function SearchResults({
             {results.length} plan{results.length === 1 ? "" : "s"} for{" "}
             <span className="text-gradient">{query}</span>
           </h2>
-          <Cards items={results} scope="search" />
+          <Cards items={results} scope="search" canSave={user !== null} />
         </section>
       )}
     </div>
@@ -144,6 +166,7 @@ export function HomeSections({
   view: "list" | "map";
   onView: (view: "list" | "map") => void;
 }) {
+  const canSave = user !== null;
   const open = items.filter((item) => !item.locked);
   const today = open.filter((item) =>
     isSameDay(new Date(item.activity.startsAt), new Date(now())),
@@ -160,7 +183,11 @@ export function HomeSections({
   };
   const first =
     today.length > 0
-      ? { id: "today", title: "Happening today 🔥", items: take((item) => today.includes(item)) }
+      ? {
+          id: "today",
+          title: "Happening today 🔥",
+          items: take((item) => today.includes(item)),
+        }
       : { id: "soon", title: "Coming up ⚡", items: take(() => true) };
   // Friends with a ticket; a friend who only hosts isn't "going".
   const withFriends = take((item) =>
@@ -169,37 +196,57 @@ export function HomeSections({
   const forYou = user
     ? take(
         (item) =>
-          item.activity.hostId !== user.id && user.interests.includes(item.activity.category),
+          item.activity.hostId !== user.id &&
+          user.interests.includes(item.activity.category),
       )
     : [];
   const lookingForPeople = take((item) => {
     const left = item.activity.capacity - item.activity.goingCount;
     return left > 0 && (item.activity.quick || left <= FEW_SPOTS);
   });
-  const weekend = take((item) => isThisWeekend(Date.parse(item.activity.startsAt)));
+  const weekend = take((item) =>
+    isThisWeekend(Date.parse(item.activity.startsAt)),
+  );
   const nearby = items;
 
   return (
     <div className="space-y-6">
-      <Row id={first.id} title={first.title} items={first.items} />
-      <Row id="friends" title="Your friends are going" items={withFriends} />
-      <Row id="foryou" title="For you ✨" items={forYou} />
+      <Row
+        id={first.id}
+        title={first.title}
+        items={first.items}
+        canSave={canSave}
+      />
+      <Row
+        id="friends"
+        title="Your friends are going"
+        items={withFriends}
+        canSave={canSave}
+      />
+      <Row id="foryou" title="For you ✨" items={forYou} canSave={canSave} />
       <Row
         id="looking"
         title="Looking for people"
         items={lookingForPeople}
+        canSave={canSave}
         action={
           <Link
             href="/host/quick"
-            className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 hover:underline"
+            className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-brand-700 hover:underline"
           >
             Post yours
+            <ArrowRightIcon className="h-4 w-4" />
           </Link>
         }
       />
-      <Row id="weekend" title="This weekend" items={weekend} />
+      <Row
+        id="weekend"
+        title="This weekend"
+        items={weekend}
+        canSave={canSave}
+      />
 
-      <section aria-labelledby="nearby-heading">
+      <section aria-labelledby="nearby-heading" className="scroll-mt-24">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 id="nearby-heading" className={SECTION_TITLE}>
             Plans in <span className="text-location">{city}</span>
@@ -223,11 +270,13 @@ export function HomeSections({
           />
         ) : view === "map" ? (
           <MapView
-            activities={nearby.filter((item) => !item.locked).map((item) => item.activity)}
+            activities={nearby
+              .filter((item) => !item.locked)
+              .map((item) => item.activity)}
             center={CITY_CENTERS[city]}
           />
         ) : (
-          <Cards items={nearby} scope="list" />
+          <Cards items={nearby} scope="list" canSave={canSave} />
         )}
       </section>
     </div>

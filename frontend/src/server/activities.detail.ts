@@ -6,10 +6,22 @@ import { accessFor, canView, LIVE_STATUSES } from "@/server/access";
 import { activityById } from "@/server/activities";
 import { viewerKey } from "@/server/auth";
 import { devSettings } from "@/server/clock";
-import { toActivity, toFriendRequest, toJoin, toReview, toUser } from "@/server/dto";
+import {
+  toActivity,
+  toFriendRequest,
+  toJoin,
+  toReview,
+  toUser,
+} from "@/server/dto";
 import { requestBetween, usersByIds } from "@/server/friends";
 import { isRefundable } from "@/server/joins.shared";
-import { InterestedModel, InviteOpenModel, JoinModel, ReviewModel, type UserDoc } from "@/server/models";
+import {
+  InterestedModel,
+  InviteOpenModel,
+  JoinModel,
+  ReviewModel,
+  type UserDoc,
+} from "@/server/models";
 import { fail } from "@/server/respond";
 import { userStats } from "@/server/users";
 
@@ -28,21 +40,40 @@ async function viewerJoin(activityId: string, userId: string) {
 
 // The party page. A plan the viewer may not open still comes back, redacted,
 // so the page can show the lock and the invite prompt.
-export async function activityDetail(id: string, viewer: UserDoc | null): Promise<ActivityDetail> {
+export async function activityDetail(
+  id: string,
+  viewer: UserDoc | null,
+): Promise<ActivityDetail> {
   const dev = await devSettings();
   const activity = await activityById(id);
   if (!activity) fail("NOT_FOUND", "This plan no longer exists");
   const viewerId = viewer?._id ?? null;
   const key = await viewerKey();
 
-  const [access, going, myJoin, interested, invite, request, review, hostStats] = await Promise.all([
+  const [
+    access,
+    going,
+    myJoin,
+    interested,
+    invite,
+    request,
+    review,
+    hostStats,
+  ] = await Promise.all([
     accessFor(viewer, [activity]),
-    JoinModel.find({ activityId: id, status: "going" }).sort({ createdAt: 1 }).select("userId").lean(),
+    JoinModel.find({ activityId: id, status: "going" })
+      .sort({ createdAt: 1 })
+      .select("userId")
+      .lean(),
     viewerId ? viewerJoin(id, viewerId) : null,
     viewerId ? InterestedModel.exists({ _id: `${viewerId}:${id}` }) : null,
     InviteOpenModel.findById(`${key}:${id}`).lean(),
-    viewerId && viewerId !== activity.hostId ? requestBetween(viewerId, activity.hostId) : null,
-    viewerId ? ReviewModel.findOne({ activityId: id, userId: viewerId }).lean() : null,
+    viewerId && viewerId !== activity.hostId
+      ? requestBetween(viewerId, activity.hostId)
+      : null,
+    viewerId
+      ? ReviewModel.findOne({ activityId: id, userId: viewerId }).lean()
+      : null,
     userStats(activity.hostId),
   ]);
 
@@ -59,7 +90,11 @@ export async function activityDetail(id: string, viewer: UserDoc | null): Promis
   const goingIds = going.map((j) => j.userId);
   const goingSet = new Set(goingIds);
   const myFriends = viewerId ? friendIds(access.graph, viewerId) : [];
-  const mutualIds = viewerId ? mutualFriendIds(access.graph, viewerId, activity.hostId) : [];
+  // The host has no "mutual friends" with themself.
+  const mutualIds =
+    viewerId && viewerId !== activity.hostId
+      ? mutualFriendIds(access.graph, viewerId, activity.hostId)
+      : [];
   const users = await usersByIds([
     activity.hostId,
     ...goingIds,
@@ -71,12 +106,25 @@ export async function activityDetail(id: string, viewer: UserDoc | null): Promis
   // A deleted host's cancelled plan still opens, so attendees can read the
   // cancellation and refund notice; their name and profile stay hidden.
   const host = users.get(activity.hostId);
-  if (!host && activity.status !== "cancelled") fail("NOT_FOUND", "This plan no longer exists");
+  if (!host && activity.status !== "cancelled")
+    fail("NOT_FOUND", "This plan no longer exists");
   const hostUser = host
     ? toUser(host)
-    : { id: activity.hostId, handle: "", name: "Former host", city: activity.city, bio: "", interests: [], phoneVerified: false, idVerified: false };
+    : {
+        id: activity.hostId,
+        handle: "",
+        name: "Former host",
+        city: activity.city,
+        bio: "",
+        interests: [],
+        phoneVerified: false,
+        idVerified: false,
+      };
   const pick = (ids: string[]) =>
-    ids.map((uid) => users.get(uid)).filter((u): u is UserDoc => u !== undefined).map(toUser);
+    ids
+      .map((uid) => users.get(uid))
+      .filter((u): u is UserDoc => u !== undefined)
+      .map(toUser);
 
   const canViewIt = canView(access, activity);
   return {
@@ -94,13 +142,21 @@ export async function activityDetail(id: string, viewer: UserDoc | null): Promis
       join: myJoin ? toJoin(myJoin) : null,
       waitlistPosition,
       interested: interested !== null,
-      friendsGoing: pick(myFriends.filter((uid) => uid === activity.hostId || goingSet.has(uid))),
+      friendsGoing: pick(
+        myFriends.filter((uid) => uid === activity.hostId || goingSet.has(uid)),
+      ),
       mutualWithHost: pick(mutualIds),
-      isFriendOfHost: viewerId ? isFriend(access.graph, viewerId, activity.hostId) : false,
+      isFriendOfHost: viewerId
+        ? isFriend(access.graph, viewerId, activity.hostId)
+        : false,
       friendRequest: request ? toFriendRequest(request) : null,
       review: review ? toReview(review) : null,
       invite: invite
-        ? { grantsAccess: invite.grantsAccess, refId: invite.refId, inviter: inviter ? toUser(inviter) : undefined }
+        ? {
+            grantsAccess: invite.grantsAccess,
+            refId: invite.refId,
+            inviter: inviter ? toUser(inviter) : undefined,
+          }
         : null,
     },
   };

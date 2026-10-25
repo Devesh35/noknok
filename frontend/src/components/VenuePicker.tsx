@@ -6,16 +6,29 @@ import { Input } from "@/components/Field";
 import { MapPinIcon, SearchIcon } from "@/components/icons";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 import { VenueMap, type VenueMapProps } from "@/components/VenueMap";
-import { areasFor, CITY_CENTERS } from "@/lib/activity";
+import {
+  areasFor,
+  CITY_CENTERS,
+  LAUNCH_AREA,
+  placeNameFrom,
+} from "@/lib/activity";
 import { CITIES, type City, type GeoPlace } from "@/lib/types";
 
 const SEARCH_DEBOUNCE_MS = 500;
-const CITY_OPTIONS: SelectOption<City>[] = CITIES.map((city) => ({ value: city, label: city }));
+const CITY_OPTIONS: SelectOption<City>[] = CITIES.map((city) => ({
+  value: city,
+  label: city,
+}));
 function areaOptions(city: City | "", current: string): SelectOption<string>[] {
   const areas = areasFor(city);
-  const options = [{ value: "", label: "Pick an area" }, ...areas.map((a) => ({ value: a, label: a }))];
+  const options = [
+    { value: "", label: "Pick an area" },
+    ...areas.map((a) => ({ value: a, label: a })),
+  ];
   // The map may name a locality we do not list; keep it selectable.
-  return current && !areas.includes(current) ? [...options, { value: current, label: current }] : options;
+  return current && !areas.includes(current)
+    ? [...options, { value: current, label: current }]
+    : options;
 }
 
 export interface Venue {
@@ -32,7 +45,8 @@ export interface Venue {
 // outside NokNok for now.
 function cityFrom(mapCity: string, mapArea: string): City | "" {
   const text = `${mapArea} ${mapCity}`.toLowerCase();
-  if (text.includes("vitthalwadi") || text.includes("vithalwadi")) return "Vitthalwadi";
+  if (text.includes("vitthalwadi") || text.includes("vithalwadi"))
+    return "Vitthalwadi";
   if (text.includes("ulhasnagar")) return "Ulhasnagar";
   if (text.includes("ambernath")) return "Ambernath";
   if (text.includes("kalyan") || text.includes("dombivli")) return "Kalyan";
@@ -53,7 +67,9 @@ export function VenuePicker({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GeoPlace[]>([]);
   const [searching, setSearching] = useState(false);
-  const [manual, setManual] = useState(() => !!value.address && value.lat === undefined);
+  const [manual, setManual] = useState(
+    () => !!value.address && value.lat === undefined,
+  );
   const [focus, setFocus] = useState<VenueMapProps["focus"]>(null);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
@@ -87,7 +103,12 @@ export function VenuePicker({
       lng,
       ...(place
         ? {
-            venueName: place.name || value.venueName,
+            // A dropped pin rarely lands on a named place; fall back to the
+            // locality, then the first part of the address that has a word in it.
+            venueName:
+              place.name ||
+              value.venueName ||
+              placeNameFrom(place.area, place.address),
             address: place.address,
             city: cityFrom(place.city, place.area),
             area: place.area,
@@ -100,7 +121,11 @@ export function VenuePicker({
     setResults([]);
     setQuery("");
     applyPlace(place, place.lat, place.lng);
-    setFocus((prev) => ({ lat: place.lat, lng: place.lng, seq: (prev?.seq ?? 0) + 1 }));
+    setFocus((prev) => ({
+      lat: place.lat,
+      lng: place.lng,
+      seq: (prev?.seq ?? 0) + 1,
+    }));
   };
 
   const dropped = async (lat: number, lng: number) => {
@@ -144,7 +169,9 @@ export function VenuePicker({
                     <span className="block text-sm font-semibold text-ink">
                       {place.name || place.address.split(",")[0]}
                     </span>
-                    <span className="block text-xs text-soft">{place.address}</span>
+                    <span className="block text-xs text-soft">
+                      {place.address}
+                    </span>
                   </span>
                 </button>
               </li>
@@ -153,12 +180,23 @@ export function VenuePicker({
         )}
       </div>
 
-      <VenueMap center={center} zoomed={zoomed} focus={focus} onDrop={dropped} />
-      <p className="text-xs text-muted">Tap the map or drag the pin to the exact spot.</p>
+      <VenueMap
+        center={center}
+        zoomed={zoomed}
+        focus={focus}
+        onDrop={dropped}
+        bounds={LAUNCH_AREA}
+        className="h-80 md:h-[26rem]"
+      />
+      <p className="text-xs text-muted">
+        Tap the map or drag the pin to the exact spot.
+      </p>
 
       {value.address && !manual && (
         <div className="rounded-2xl bg-brand-600/8 p-3 text-sm">
-          <p className="font-semibold text-ink">{value.venueName || "Pinned location"}</p>
+          <p className="font-semibold text-ink">
+            {value.venueName || "Pinned location"}
+          </p>
           <p className="text-soft">
             {value.address}
             {value.area ? ` · ${value.area}` : ""}

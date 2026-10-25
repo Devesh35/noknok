@@ -5,7 +5,8 @@ import { useEffect, useRef } from "react";
 import type { VenueMapProps } from "@/components/VenueMap";
 
 const TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
 interface LeafletBits {
   map: import("leaflet").Map;
@@ -14,7 +15,15 @@ interface LeafletBits {
 
 // Leaflet + OpenStreetMap. Leaflet touches `window`, so it is imported inside
 // the effect.
-export function VenueMapOsm({ center, zoomed, focus, onDrop, label, className }: VenueMapProps) {
+export function VenueMapOsm({
+  center,
+  zoomed,
+  focus,
+  onDrop,
+  bounds,
+  label,
+  className,
+}: VenueMapProps) {
   const editable = onDrop !== undefined;
   const containerRef = useRef<HTMLDivElement>(null);
   const leaflet = useRef<LeafletBits | null>(null);
@@ -35,7 +44,10 @@ export function VenueMapOsm({ center, zoomed, focus, onDrop, label, className }:
         iconSize: [40, 40],
         iconAnchor: [20, 36],
       });
-      const marker = L.marker([center.lat, center.lng], { icon, draggable: editable }).addTo(map);
+      const marker = L.marker([center.lat, center.lng], {
+        icon,
+        draggable: editable,
+      }).addTo(map);
       if (editable) {
         marker.on("dragend", () => {
           const { lat, lng } = marker.getLatLng();
@@ -46,7 +58,17 @@ export function VenueMapOsm({ center, zoomed, focus, onDrop, label, className }:
           onDropRef.current?.(event.latlng.lat, event.latlng.lng);
         });
       }
-      map.setView([center.lat, center.lng], zoomed ? 16 : 12);
+      map.setView([center.lat, center.lng], zoomed ? 17 : 14);
+      if (bounds) {
+        // The map stops at the box's edge and can't zoom out past it.
+        const box = L.latLngBounds(
+          [bounds.south, bounds.west],
+          [bounds.north, bounds.east],
+        );
+        map.setMaxBounds(box);
+        map.options.maxBoundsViscosity = 1;
+        map.setMinZoom(map.getBoundsZoom(box));
+      }
       leaflet.current = { map, marker };
     });
     return () => {
@@ -60,7 +82,7 @@ export function VenueMapOsm({ center, zoomed, focus, onDrop, label, className }:
 
   useEffect(() => {
     if (!focus || !leaflet.current) return;
-    leaflet.current.map.setView([focus.lat, focus.lng], 16);
+    leaflet.current.map.setView([focus.lat, focus.lng], 17);
     leaflet.current.marker.setLatLng([focus.lat, focus.lng]);
   }, [focus]);
 
