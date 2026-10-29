@@ -373,13 +373,20 @@ export const CITY_CENTERS: Record<City, { lat: number; lng: number }> = {
   Kalyan: { lat: 19.2403, lng: 73.1305 },
 };
 
-// The launch cities in one box (Kalyan to Ambernath). Venue search offers
-// nothing outside it.
+// Where the home map starts: the middle of the four launch cities.
+export const LAUNCH_CENTER = { lat: 19.22, lng: 73.158 };
+
+// The four launch cities in one box with 5 km of margin around them. The
+// venue map stops at its edge and venue search offers nothing outside it.
+const LAUNCH_MARGIN_KM = 5;
+const KM_PER_DEG_LAT = 111.2;
+const KM_PER_DEG_LNG = 105; // at 19°N
+const centers = Object.values(CITY_CENTERS);
 export const LAUNCH_AREA = {
-  south: 19.14,
-  west: 73.05,
-  north: 19.32,
-  east: 73.28,
+  south: Math.min(...centers.map((c) => c.lat)) - LAUNCH_MARGIN_KM / KM_PER_DEG_LAT,
+  west: Math.min(...centers.map((c) => c.lng)) - LAUNCH_MARGIN_KM / KM_PER_DEG_LNG,
+  north: Math.max(...centers.map((c) => c.lat)) + LAUNCH_MARGIN_KM / KM_PER_DEG_LAT,
+  east: Math.max(...centers.map((c) => c.lng)) + LAUNCH_MARGIN_KM / KM_PER_DEG_LNG,
 } as const;
 
 // A name for a pinned spot that the map didn't name: the locality, else the

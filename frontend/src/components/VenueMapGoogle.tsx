@@ -56,7 +56,8 @@ export function VenueMapGoogle({
         ...(bounds
           ? {
               restriction: { latLngBounds: bounds, strictBounds: true },
-              minZoom: 11,
+              // The box is about 17 km across; this is as far out as it goes.
+              minZoom: 12,
             }
           : {}),
       });

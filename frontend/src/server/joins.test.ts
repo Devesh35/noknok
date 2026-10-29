@@ -59,7 +59,7 @@ async function user(name = `person${++seq}`) {
   return doc.toObject();
 }
 
-async function plan(hostId: string, capacity: number, priceP = 0) {
+async function plan(hostId: string, capacity: number, priceP = 0, upiId?: string) {
   const start = Date.now() + 2 * 24 * 60 * 60 * 1000;
   return m.models.ActivityModel.create({
     _id: `a_test${++seq}`,
@@ -71,6 +71,7 @@ async function plan(hostId: string, capacity: number, priceP = 0) {
     startsAt: new Date(start),
     endsAt: new Date(start + 60 * 60 * 1000),
     priceP,
+    upiId,
     capacity,
     visibility: "open",
     inviteToken: `inv${seq}`,
@@ -149,5 +150,19 @@ describe("money", () => {
     expect(cancelled?.status).toBe("host_cancelled");
     expect(cancelled?.refundedP).toBe(join.ticketP + join.feeP);
     expect(cancelled?.hostShareP).toBe(0);
+  });
+
+  it("a plan paid to the host's UPI id takes no fee and settles the join at once", async () => {
+    const host = await user();
+    const priceP = 50_000;
+    const activity = await plan(host._id, 10, priceP, "host@okaxis");
+    const joiner = await user();
+
+    const { join, handoff } = await m.joins.requestJoin(joiner, activity._id);
+    expect(handoff).toEqual({ kind: "captured" });
+    expect(join.status).toBe("going");
+    expect(join.ticketP).toBe(priceP);
+    expect(join.feeP).toBe(0);
+    expect(join.hostShareP).toBe(priceP);
   });
 });

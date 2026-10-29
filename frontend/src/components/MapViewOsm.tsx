@@ -31,7 +31,7 @@ export function MapViewOsm({ activities, center }: MapViewProps) {
         scrollWheelZoom: false,
         maxBounds: box,
         maxBoundsViscosity: 1,
-        minZoom: 10,
+        minZoom: 12,
       });
       map.setMinZoom(Math.max(10, map.getBoundsZoom(box)));
       L.tileLayer(TILES, { attribution: ATTRIBUTION, maxZoom: 18 }).addTo(map);

@@ -56,7 +56,10 @@ const secretSchema = z.object({
   // Google Maps Platform (Places + Geocoding). Empty = Nominatim.
   GOOGLE_MAPS_SERVER_KEY: optional,
   // Payments
-  PAYMENT_PROVIDER: z.enum(["fake", "razorpay"]).default("fake"),
+  PAYMENT_PROVIDER: z.enum(["fake", "razorpay", "upi"]).default("fake"),
+  // PAYMENT_PROVIDER=upi: the VPA joiners pay and the name their app shows.
+  UPI_ID: z.string().default("noknok@upi"),
+  UPI_PAYEE_NAME: z.string().default("NokNok"),
   PAYMENT_ENV: z.enum(["test", "live"]).default("test"),
   RAZORPAY_KEY_ID: optional,
   RAZORPAY_KEY_SECRET: optional,

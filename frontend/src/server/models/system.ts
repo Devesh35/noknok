@@ -1,7 +1,7 @@
 import "server-only";
 import mongoose, { Schema } from "mongoose";
 import { model, opts } from "@/server/models/base";
-import type { PaymentProvider } from "@/lib/payments/types";
+import type { SettlingProvider } from "@/lib/payments/types";
 import type { DevSettings, FeeModel } from "@/lib/types";
 
 // ---------- payments ----------
@@ -11,7 +11,7 @@ import type { DevSettings, FeeModel } from "@/lib/types";
 export interface PaymentDoc {
   _id: string;
   joinId: string;
-  provider: Exclude<PaymentProvider, "fake">;
+  provider: SettlingProvider;
   merchantOrderId: string;
   providerOrderId: string;
   providerPaymentId?: string;
@@ -60,7 +60,7 @@ export const PaymentModel = model<PaymentDoc>("Payment", paymentSchema);
 // Idempotency for gateway webhooks: a redelivery stops at the primary key.
 export interface WebhookEventDoc {
   _id: string; // `${provider}:${eventId}`
-  provider: Exclude<PaymentProvider, "fake">;
+  provider: SettlingProvider;
   event: string;
   payload: unknown;
   receivedAt: Date;

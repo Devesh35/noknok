@@ -1,6 +1,6 @@
 import "server-only";
 import { randomCode } from "@/lib/ids";
-import type { Handoff, PaymentProvider, VerifyResult } from "@/lib/payments/types";
+import type { Handoff, SettlingProvider, VerifyResult } from "@/lib/payments/types";
 import { audit } from "@/server/audit";
 import { config } from "@/server/config";
 import { connectDb } from "@/server/db";
@@ -20,17 +20,19 @@ import { fail } from "@/server/respond";
 const PENDING_HOLD_MS = 30 * 60 * 1000;
 const POLL_BATCH = 50;
 
-type GatewayName = Exclude<PaymentProvider, "fake">;
+type GatewayName = SettlingProvider;
 
-// True when paid joins settle instantly (development and tests).
+// True when paid joins settle instantly: no gateway in the loop (development,
+// tests, and UPI mode where the money moves outside the app).
 export function paymentsAreFake(): boolean {
-  return selectGateway().provider === "fake";
+  const provider = selectGateway().provider;
+  return provider === "fake" || provider === "upi";
 }
 
 // Creates the gateway order for a held spot and records it.
 export async function createPayment(join: JoinDoc, amountP: number): Promise<Handoff> {
   const gateway = selectGateway();
-  if (gateway.provider === "fake") return { kind: "captured" };
+  if (gateway.provider === "fake" || gateway.provider === "upi") return { kind: "captured" };
   const merchantOrderId = `mo_${randomCode(12)}`;
   const order = await gateway.createOrder({
     joinId: join._id,

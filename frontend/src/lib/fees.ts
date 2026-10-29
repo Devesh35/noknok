@@ -11,6 +11,22 @@ export function ticketFromTotal(totalP: number, feeModel: FeeModel, feePercent: 
   return Math.round(totalP / (1 + (feePercent / 100) * (1 + GST_RATE)));
 }
 
+// A plan paid straight to the host's UPI id: the joiner pays the price, the
+// host gets all of it, NokNok takes nothing.
+export function directBreakdown(priceP: number): PriceBreakdown {
+  return { ticketP: priceP, platformFeeP: 0, gstP: 0, totalP: priceP, hostReceivesP: priceP };
+}
+
+// The breakdown for a plan: direct to the host's UPI id when it has one,
+// otherwise the platform's fee model.
+export function breakdownFor(
+  plan: { priceP: number; upiId?: string },
+  feeModel: FeeModel,
+  feePercent: number,
+): PriceBreakdown {
+  return plan.upiId ? directBreakdown(plan.priceP) : breakdownForPrice(plan.priceP, feeModel, feePercent);
+}
+
 // Activity.priceP is what a joiner pays. This is the breakdown behind it:
 // the fee and GST come out of that amount, so the total is exactly the price
 // and any rounding lands on the host's side.

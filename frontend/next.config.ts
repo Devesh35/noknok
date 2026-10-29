@@ -24,6 +24,8 @@ const CSP = {
     "https://*.tile.openstreetmap.org",
     "https://tile.openstreetmap.org",
     ...RAZORPAY,
+    // The UPI pay sheet's QR code (PAYMENT_PROVIDER=upi).
+    "https://api.qrserver.com",
   ],
   "connect-src": ["'self'", ...GOOGLE, ...RAZORPAY, ...(dev ? ["ws://localhost:*", "http://localhost:*"] : [])],
   "frame-src": ["'self'", "https://*.google.com", "https://*.firebaseapp.com", ...RAZORPAY],

@@ -121,7 +121,8 @@ export async function requestJoin(me: UserDoc, activityId: string): Promise<Join
 
   const money = await moneyFor(activity);
   const paid = money.totalP > 0;
-  const fake = paymentsAreFake();
+  // Paid to the host's UPI id outside the app: recorded as going right away.
+  const fake = paymentsAreFake() || Boolean(activity.upiId);
   if (paid && fake && dev.failNextPayment) {
     await updateDevSettings({ failNextPayment: false });
     fail("PAYMENT_FAILED", "Payment failed");

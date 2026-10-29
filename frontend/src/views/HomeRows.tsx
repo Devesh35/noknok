@@ -8,10 +8,10 @@ import { EmptyState } from "@/components/EmptyState";
 import { ArrowRightIcon, ListIcon, MapIcon } from "@/components/icons";
 import { MapView } from "@/components/MapView";
 import { UserRow } from "@/components/UserBits";
-import { CITY_CENTERS } from "@/lib/activity";
+import { LAUNCH_CENTER } from "@/lib/activity";
 import { isSameDay } from "@/lib/format";
 import { DAY_MS, now } from "@/lib/time";
-import type { ActivityCardItem, City, Me, PersonResult } from "@/lib/types";
+import type { ActivityCardItem, Me, PersonResult } from "@/lib/types";
 
 const ROW_COUNT = 6;
 const FEW_SPOTS = 3; // "needs N more" threshold
@@ -156,13 +156,11 @@ export function SearchResults({
 export function HomeSections({
   items,
   user,
-  city,
   view,
   onView,
 }: {
   items: ActivityCardItem[];
   user: Me | null;
-  city: City;
   view: "list" | "map";
   onView: (view: "list" | "map") => void;
 }) {
@@ -172,7 +170,7 @@ export function HomeSections({
     isSameDay(new Date(item.activity.startsAt), new Date(now())),
   );
   // Each plan shows in at most one curated row, in the order the rows appear;
-  // "Plans in <city>" below stays complete.
+  // "All plans" below stays complete.
   const used = new Set<string>();
   const take = (pick: (item: ActivityCardItem) => boolean) => {
     const row = open
@@ -249,13 +247,7 @@ export function HomeSections({
       <section aria-labelledby="nearby-heading" className="scroll-mt-24">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 id="nearby-heading" className={SECTION_TITLE}>
-            {view === "map" ? (
-              "Plans on the map"
-            ) : (
-              <>
-                Plans in <span className="text-location">{city}</span>
-              </>
-            )}
+            {view === "map" ? "Plans on the map" : "All plans"}
           </h2>
           <div className="flex gap-1">
             <Chip selected={view === "list"} onClick={() => onView("list")}>
@@ -271,15 +263,15 @@ export function HomeSections({
         {nearby.length === 0 ? (
           <EmptyState
             emoji="🗺️"
-            title={`Nothing in ${city} right now`}
-            body="Switch city, or post a quick plan and see who joins."
+            title="Nothing on right now"
+            body="Post a quick plan and see who joins."
           />
         ) : view === "map" ? (
           <MapView
             activities={nearby
               .filter((item) => !item.locked)
               .map((item) => item.activity)}
-            center={CITY_CENTERS[city]}
+            center={LAUNCH_CENTER}
           />
         ) : (
           <Cards items={nearby} scope="list" canSave={canSave} />

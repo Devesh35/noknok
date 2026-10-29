@@ -1,4 +1,4 @@
-import type { Handoff, PaymentEnv, PaymentProvider } from "@/lib/payments/types";
+import type { Handoff, PaymentEnv, PaymentProvider, UpiPayee } from "@/lib/payments/types";
 
 // Shapes that cross the API boundary. The server builds them from documents in
 // src/server/, the client reads them through src/api/. Money is integer paise
@@ -102,6 +102,8 @@ export interface Activity {
   startsAt: string;
   endsAt: string;
   priceP: number; // 0 = free
+  // Set when joiners pay the host directly by UPI (full amount, no platform fee).
+  upiId?: string;
   capacity: number;
   visibility: Visibility;
   tags: string[];
@@ -212,7 +214,7 @@ export interface DevSettings {
   failNextPayment: boolean;
 }
 
-export type { PaymentEnv, PaymentProvider } from "@/lib/payments/types";
+export type { PaymentEnv, PaymentProvider, UpiPayee } from "@/lib/payments/types";
 
 // ---------- Responses (DTOs) ----------
 
@@ -223,6 +225,8 @@ export interface SessionDto {
   dev: DevSettings;
   paymentProvider: PaymentProvider;
   paymentEnv: PaymentEnv;
+  // Set only when paymentProvider is "upi".
+  upi: UpiPayee | null;
 }
 
 // One card in a list. The server decides what the viewer may see: a locked

@@ -8,13 +8,10 @@ import {
   useEffect,
   useRef,
   useState,
-  useSyncExternalStore,
   ViewTransition,
   type RefObject,
 } from "react";
 import {
-  getPreferredCity,
-  setPreferredCity,
   useActivities,
   useMe,
   usePeople,
@@ -36,12 +33,10 @@ import {
   SearchIcon,
   SlidersIcon,
 } from "@/components/icons";
-import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 import { ActivityCardSkeleton } from "@/components/Skeleton";
 import { CATEGORIES, CATEGORY_META } from "@/lib/activity";
 import { isSameDay } from "@/lib/format";
 import { now } from "@/lib/time";
-import { CITIES, type City } from "@/lib/types";
 import {
   activeCount,
   FiltersSheet,
@@ -57,28 +52,8 @@ import {
 } from "@/views/HomeRail";
 import { GRID, HomeSections, SearchResults } from "@/views/HomeRows";
 
-const CITY_OPTIONS: SelectOption<City>[] = CITIES.map((city) => ({
-  value: city,
-  label: city,
-}));
-const DEFAULT_CITY: City = "Ulhasnagar";
 const SEARCH_DEBOUNCE_MS = 250;
 const SEARCH_MAX = 80; // activityListQuery.q in src/lib/schemas.ts
-
-function isCity(value: string | null): value is City {
-  return CITIES.includes(value as City);
-}
-
-// Reads the stored city once hydration is done; the server render can't know it.
-const noSubscribe = () => () => {};
-function useStoredCity(): City | null {
-  const stored = useSyncExternalStore(
-    noSubscribe,
-    getPreferredCity,
-    () => null,
-  );
-  return isCity(stored) ? stored : null;
-}
 
 function greeting(): string {
   const hour = new Date(now()).getHours();
@@ -164,7 +139,6 @@ export function HomeView() {
   const unread = session?.unread ?? 0;
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState(NO_FILTERS);
-  const [chosenCity, setChosenCity] = useState<City | null>(null);
   const [view, setView] = useState<"list" | "map">("list");
   const [sheet, setSheet] = useState<"filters" | null>(null);
   // While the filter sheet is open the list keeps the filters it had when the
@@ -204,25 +178,10 @@ export function HomeView() {
     };
   }, []);
 
-  // The city is a device preference; a logged-in user's own city is the
-  // fallback when they haven't picked one yet.
-  const storedCity = useStoredCity();
-  const city = chosenCity ?? storedCity ?? user?.city ?? DEFAULT_CITY;
-  const pickCity = (next: City) => {
-    setPreferredCity(next);
-    setChosenCity(next);
-  };
-
   // The last list stays on screen while a filter change is fetching, so the
-  // skeleton only shows on first load.
-  // The map view pins plans in all four cities; the list stays on one.
-  const activities = useActivities(
-    {
-      ...toListQuery(applied, city, searched),
-      ...(view === "map" ? { city: undefined } : {}),
-    },
-    true,
-  );
+  // skeleton only shows on first load. Plans from all four launch cities
+  // show together; there is no city to pick.
+  const activities = useActivities(toListQuery(applied, searched), true);
   const people = usePeople(searched);
   const fetched = activities.data?.items ?? null;
   // Only offer categories that have plans; keep the selected one so it can be
@@ -256,17 +215,6 @@ export function HomeView() {
       : items.length === 0);
   const filterCount = activeCount(picked) + (day ? 1 : 0);
 
-  const cityMenu = (className: string) => (
-    <SelectMenu
-      label="City"
-      icon="📍"
-      value={city}
-      onChange={pickCity}
-      options={CITY_OPTIONS}
-      align="end"
-      className={className}
-    />
-  );
   const chipRow = (
     <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 py-1 md:mx-0 md:px-0">
       <Chip
@@ -416,7 +364,6 @@ export function HomeView() {
         <HomeSections
           items={items}
           user={user ?? null}
-          city={city}
           view={view}
           onView={setView}
         />
@@ -430,15 +377,14 @@ export function HomeView() {
         <SearchFocus inputRef={searchRef} />
       </Suspense>
 
-      {/* ---------- Phones: logo, city and bell; then the search ---------- */}
+      {/* ---------- Phones: logo and bell; then the search ---------- */}
       <div className="flex items-center gap-2 px-4 pt-3 md:hidden">
         <Logo className="text-2xl" />
-        {cityMenu("ml-auto font-semibold")}
         {user && (
           <Link
             href="/notifications"
             aria-label="Notifications"
-            className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-soft"
+            className="relative ml-auto inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-soft"
           >
             <BellIcon className="h-6 w-6" />
             <UnreadDot count={unread} className="top-0.5 right-0.5" />
@@ -454,7 +400,6 @@ export function HomeView() {
           {session !== undefined && !user && <Logo className="shrink-0" />}
           <div className="w-full max-w-xl">{searchBox}</div>
           <div className="ml-auto flex items-center gap-2">
-            {cityMenu("font-semibold")}
             <HeaderAccount />
           </div>
         </div>

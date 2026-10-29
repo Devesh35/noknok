@@ -59,6 +59,8 @@ export interface PaymentGateway {
 const GATEWAYS: Record<PaymentProvider, PaymentGateway> = {
   fake: fakeGateway,
   razorpay: razorpayGateway,
+  // Same instant settle as fake; the client shows the UPI pay sheet instead.
+  upi: { ...fakeGateway, provider: "upi" },
 };
 
 // The gateway new orders go to.

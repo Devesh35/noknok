@@ -1,6 +1,6 @@
 import "server-only";
 import type { ClientSession } from "mongoose";
-import { breakdownForPrice } from "@/lib/fees";
+import { breakdownFor } from "@/lib/fees";
 import { HOUR_MS } from "@/lib/time";
 import { canSee, friendIds } from "@/lib/visibility";
 import { audit } from "@/server/audit";
@@ -36,9 +36,9 @@ export interface Money {
   totalP: number;
 }
 
-export async function moneyFor(activity: Pick<ActivityDoc, "priceP">): Promise<Money> {
+export async function moneyFor(activity: Pick<ActivityDoc, "priceP" | "upiId">): Promise<Money> {
   const dev = await devSettings();
-  const price = breakdownForPrice(activity.priceP, dev.feeModel, dev.feePercent);
+  const price = breakdownFor(activity, dev.feeModel, dev.feePercent);
   return {
     ticketP: price.ticketP,
     feeP: price.totalP - price.ticketP,

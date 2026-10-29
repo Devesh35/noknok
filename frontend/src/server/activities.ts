@@ -84,10 +84,17 @@ export async function getActivityPreview(id: string): Promise<ActivityPreview | 
   };
 }
 
+// For now the only way to collect money is straight to the host's UPI id.
+function requireUpiForPaid(input: ActivityInput): void {
+  if (input.priceP > 0 && !input.upiId) fail("INVALID", "Add the UPI id joiners should pay");
+}
+
 function fieldsFrom(input: ActivityInput) {
-  const { lat, lng, startsAt, endsAt, ...rest } = input;
+  const { lat, lng, startsAt, endsAt, upiId, ...rest } = input;
   return {
     ...rest,
+    // Free plans collect nothing, so they keep no UPI id.
+    upiId: input.priceP > 0 ? upiId : undefined,
     startsAt: new Date(startsAt),
     endsAt: new Date(endsAt),
     location:
@@ -99,6 +106,7 @@ function fieldsFrom(input: ActivityInput) {
 
 export async function createActivity(me: UserDoc, input: ActivityInput, quick = false): Promise<Activity> {
   await devSettings();
+  requireUpiForPaid(input);
   checkStart(input.startsAt);
   await connectDb();
   // Short codes are six characters; a collision is rare but possible.
@@ -126,6 +134,7 @@ export async function createActivity(me: UserDoc, input: ActivityInput, quick = 
 
 export async function updateActivity(me: UserDoc, id: string, input: ActivityInput): Promise<Activity> {
   await devSettings();
+  requireUpiForPaid(input);
   const before = await ownActivity(me, id);
   if (before.status === "cancelled") fail("CANCELLED", "This plan was cancelled");
   if (isPast(before)) fail("PAST", "This plan has already happened");
@@ -140,10 +149,14 @@ export async function updateActivity(me: UserDoc, id: string, input: ActivityInp
     fail("CONFLICT", "People have already joined, so the price can't change");
   }
 
-  const fields = fieldsFrom(input);
+  const { location, upiId, ...fields } = fieldsFrom(input);
+  const unset = { ...(location ? {} : { location: 1 }), ...(upiId ? {} : { upiId: 1 }) };
   const doc = await ActivityModel.findByIdAndUpdate(
     id,
-    fields.location ? { $set: fields } : { $set: fields, $unset: { location: 1 } },
+    {
+      $set: { ...fields, ...(location ? { location } : {}), ...(upiId ? { upiId } : {}) },
+      ...(Object.keys(unset).length ? { $unset: unset } : {}),
+    },
     { returnDocument: "after" },
   ).lean();
   if (!doc) fail("NOT_FOUND");

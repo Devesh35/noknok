@@ -15,7 +15,15 @@ export const metadata: Metadata = {
   description:
     "Discover and join parties, sports, treks and events around Ulhasnagar, Ambernath, Vitthalwadi and Kalyan.",
   appleWebApp: { capable: true, title: "NokNok" },
-  icons: { apple: "/icons/180" },
+  // Setting `icons` here replaces the automatic link to app/icon.svg, so the
+  // favicon has to be listed too. The PNG is for browsers that skip SVG icons.
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/32", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/icons/180",
+  },
 };
 
 export const viewport: Viewport = {

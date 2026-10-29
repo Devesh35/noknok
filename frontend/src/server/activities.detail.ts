@@ -1,5 +1,5 @@
 import "server-only";
-import { breakdownForPrice } from "@/lib/fees";
+import { breakdownFor } from "@/lib/fees";
 import type { ActivityDetail } from "@/lib/types";
 import { friendIds, isFriend, mutualFriendIds } from "@/lib/visibility";
 import { accessFor, canView, LIVE_STATUSES } from "@/server/access";
@@ -135,7 +135,7 @@ export async function activityDetail(
     host: hostUser,
     hostStats,
     attendees: canViewIt ? pick(goingIds) : [],
-    breakdown: breakdownForPrice(activity.priceP, dev.feeModel, dev.feePercent),
+    breakdown: breakdownFor(activity, dev.feeModel, dev.feePercent),
     refundable: isRefundable(activity),
     viewer: {
       canView: canViewIt,

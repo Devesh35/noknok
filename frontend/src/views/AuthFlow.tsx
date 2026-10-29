@@ -125,15 +125,18 @@ export function AuthFlow() {
   const verify = async () => {
     setBusy(true);
     const result = await verifyLoginCode(otp);
-    setBusy(false);
     if (!result.ok) {
+      setBusy(false);
       fail(result);
       return;
     }
     if (result.data.registered) {
+      // Stay busy: the next page can take a moment to arrive and the URL
+      // only changes once it has, so an idle button here looks stuck.
       done();
       return;
     }
+    setBusy(false);
     setSignupToken(result.data.signupToken);
     setSubmitted(false);
     setFieldError("");
@@ -143,8 +146,8 @@ export function AuthFlow() {
   const register = async () => {
     setBusy(true);
     const result = await registerUser({ signupToken, name, city: city as City });
-    setBusy(false);
     if (!result.ok) {
+      setBusy(false);
       // A stale sign-up token means the code step has to be redone.
       if (result.code === "OTP_EXPIRED" || result.code === "FORBIDDEN") {
         setStep("phone");

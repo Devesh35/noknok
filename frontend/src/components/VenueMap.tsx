@@ -13,8 +13,8 @@ export interface VenueMapProps {
   // The host tapped the map or dragged the pin. Left out, the map is read-only:
   // a fixed pin, as on the plan page.
   onDrop?: (lat: number, lng: number) => void;
-  // Keeps panning and zooming inside this box: a few km around the venue on
-  // the plan page, the launch cities in the picker. Left out, the map roams.
+  // Keeps panning and zooming inside this box (the launch cities, in the
+  // picker). Left out, the map roams.
   bounds?: LatLngBox;
   // Accessible name and size; the defaults suit the picker.
   label?: string;

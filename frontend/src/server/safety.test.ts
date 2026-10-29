@@ -175,7 +175,7 @@ describe("editing a plan people joined", () => {
     const activity = await plan(host._id, 4);
     for (const j of joiners) await m.joins.requestJoin(j, activity._id);
 
-    await rejectsWith(m.activities.updateActivity(host, activity._id, inputFrom(activity, { priceP: 50_000 })), "CONFLICT");
+    await rejectsWith(m.activities.updateActivity(host, activity._id, inputFrom(activity, { priceP: 50_000, upiId: "host@upi" })), "CONFLICT");
     await rejectsWith(m.activities.updateActivity(host, activity._id, inputFrom(activity, { capacity: 1 })), "CONFLICT");
 
     const later = (d: Date) => new Date(d.getTime() + DAY).toISOString();

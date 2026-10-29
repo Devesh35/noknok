@@ -81,6 +81,7 @@ export function toActivity(doc: ActivityDoc, options: ActivityOptions = {}): Act
     startsAt: iso(doc.startsAt),
     endsAt: iso(doc.endsAt),
     priceP: doc.priceP,
+    upiId: doc.upiId,
     capacity: doc.capacity,
     visibility: doc.visibility,
     tags: locked ? [] : doc.tags,

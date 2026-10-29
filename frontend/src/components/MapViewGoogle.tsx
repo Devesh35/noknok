@@ -33,7 +33,7 @@ export function MapViewGoogle({ activities, center }: MapViewProps) {
         fullscreenControl: false,
         // The map can't leave the launch cities.
         restriction: { latLngBounds: LAUNCH_AREA, strictBounds: true },
-        minZoom: 11,
+        minZoom: 12,
       });
 
       const bounds = new LatLngBounds();

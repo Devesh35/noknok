@@ -3,6 +3,7 @@
 // The wizard's form model: what is edited, how it is validated per step and
 // how it becomes an ActivityInput. The step screens are in HostWizardStepViews.
 import type { ActivityInput } from "@/api";
+import { UPI_ID_RE } from "@/lib/schemas";
 import { coverFor, placeNameFrom } from "@/lib/activity";
 import { paiseToRupees, rupeesToPaise } from "@/lib/format";
 import { DAY_MS, now } from "@/lib/time";
@@ -72,7 +73,9 @@ export interface Form {
   lng?: number;
   setting: Setting;
   beginnerFriendly: boolean;
+  collectPayment: boolean;
   price: string;
+  upiId: string;
   capacity: string;
   refundCutoffHours: string;
   waitlistMode: WaitlistMode;
@@ -109,7 +112,9 @@ export function blankForm(city: City): Form {
     area: "",
     setting: "indoor",
     beginnerFriendly: true,
+    collectPayment: false,
     price: "0",
+    upiId: "",
     capacity: "10",
     refundCutoffHours: "24",
     waitlistMode: "auto",
@@ -146,7 +151,9 @@ export function formFrom(activity: Activity): Form {
     lng: activity.lng,
     setting: activity.setting,
     beginnerFriendly: activity.beginnerFriendly,
+    collectPayment: activity.priceP > 0,
     price: String(paiseToRupees(activity.priceP)),
+    upiId: activity.upiId ?? "",
     capacity: String(activity.capacity),
     refundCutoffHours: String(activity.refundCutoffHours),
     waitlistMode: activity.waitlistMode,
@@ -217,12 +224,16 @@ export function validate(
     if (!form.city)
       errors.city =
         "NokNok is only in Ulhasnagar, Ambernath, Vitthalwadi and Kalyan for now";
-    const price = Number(form.price);
+    const price = form.collectPayment ? Number(form.price) : 0;
     const capacity = Number(form.capacity);
-    if (form.price === "" || !Number.isInteger(price) || price < 0) {
-      errors.price = "Enter a whole number of rupees, or 0 for free";
-    } else if (price > PRICE_MAX_RUPEES) {
-      errors.price = "The most a ticket can cost is ₹1,00,000";
+    if (form.collectPayment) {
+      if (form.price === "" || !Number.isInteger(price) || price < 1) {
+        errors.price = "Enter a whole number of rupees";
+      } else if (price > PRICE_MAX_RUPEES) {
+        errors.price = "The most a ticket can cost is ₹1,00,000";
+      }
+      if (!UPI_ID_RE.test(form.upiId.trim()))
+        errors.upiId = "Enter the UPI id to be paid, like name@bank";
     }
     if (!Number.isInteger(capacity) || capacity < 1)
       errors.capacity = "Enter at least 1 spot";
@@ -253,7 +264,8 @@ export function toInput(form: Form): ActivityInput {
     lng: form.lng,
     startsAt: start.toISOString(),
     endsAt: end.toISOString(),
-    priceP: rupeesToPaise(Number(form.price)), // what a joiner pays
+    priceP: form.collectPayment ? rupeesToPaise(Number(form.price)) : 0, // what a joiner pays
+    upiId: form.collectPayment ? form.upiId.trim() : undefined,
     capacity: Number(form.capacity),
     visibility: form.visibility,
     setting: form.setting,

@@ -32,14 +32,3 @@ export interface LatLngBox {
   west: number;
 }
 
-// A box `km` out from the point on each side, in degrees.
-export function boundsAround({ lat, lng }: LatLng, km: number): LatLngBox {
-  const dLat = km / 111.32;
-  const dLng = km / (111.32 * Math.cos((lat * Math.PI) / 180));
-  return {
-    north: lat + dLat,
-    south: lat - dLat,
-    east: lng + dLng,
-    west: lng - dLng,
-  };
-}

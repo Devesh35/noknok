@@ -3,11 +3,8 @@
 import { useState } from "react";
 import { buttonClass } from "@/components/Button";
 import { MapPinIcon } from "@/components/icons";
-import { VenueMap } from "@/components/VenueMap";
-import { boundsAround, readProvider, type LatLng } from "@/lib/maps/provider";
+import { readProvider, type LatLng } from "@/lib/maps/provider";
 
-// How far the interactive map lets people wander from the venue.
-const EXPLORE_RADIUS_KM = 5;
 const TILE = 256;
 const ZOOM = 15;
 
@@ -67,33 +64,19 @@ function OsmTiles({ center }: { center: LatLng }) {
   );
 }
 
-// The plan page's map: a cached still picture with the pin, which turns into
-// the real map (kept within a few km of the venue) only when tapped.
+// The plan page's map: a still picture with the pin, no panning or zooming.
+// "Open in Maps" is the way to look around.
 export function VenueMapStatic({
   center,
   venueName,
   mapsHref,
   className = "h-72",
 }: VenueMapStaticProps) {
-  const [live, setLive] = useState(false);
   // Google's still needs the Maps Static API on the server key; without it
   // the route answers 404/500 and the OpenStreetMap tiles stand in.
   const [googleStill, setGoogleStill] = useState(
     () => readProvider() === "google",
   );
-
-  if (live) {
-    return (
-      <VenueMap
-        center={center}
-        zoomed
-        focus={null}
-        bounds={boundsAround(center, EXPLORE_RADIUS_KM)}
-        label={`Map showing ${venueName}`}
-        className={className}
-      />
-    );
-  }
 
   return (
     <div
@@ -128,18 +111,7 @@ export function VenueMapStatic({
           </a>
         </>
       )}
-      <button
-        type="button"
-        onClick={() => setLive(true)}
-        className="absolute inset-0 cursor-pointer bg-transparent"
-        aria-label={`Explore the map around ${venueName}`}
-      >
-        <span className="sr-only">Explore the map</span>
-      </button>
-      <div className="pointer-events-none absolute inset-x-3 top-3 flex justify-between gap-2">
-        <span className="glass rounded-full px-3 py-1.5 text-xs font-semibold text-ink">
-          Tap to explore
-        </span>
+      <div className="pointer-events-none absolute inset-x-3 top-3 flex justify-end gap-2">
         <a
           href={mapsHref}
           target="_blank"

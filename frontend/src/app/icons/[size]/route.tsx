@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { LOGO_DOOR, LOGO_GRADIENT, LOGO_KNOB, LOGO_KNOCKS } from "@/components/LogoMark";
 
-const SIZES = [180, 192, 512];
+const SIZES = [32, 180, 192, 512];
 
 // App icons for the manifest and iOS home screen, drawn on demand: /icons/192.
 // Full-bleed (no rounded corners): the OS applies its own icon mask.

@@ -25,7 +25,7 @@ import {
 } from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
 import { VISIBILITY_META } from "@/lib/activity";
-import { breakdownForPrice } from "@/lib/fees";
+import { breakdownFor } from "@/lib/fees";
 import { formatDateTime, formatInr, formatTime } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import type { Activity, Category, DevSettings, User } from "@/lib/types";
@@ -260,7 +260,7 @@ function WizardForm({
       : null;
   // Mirrors the server's fee rule for instant feedback; the server's answer wins.
   const price = preview
-    ? breakdownForPrice(preview.priceP, dev.feeModel, dev.feePercent)
+    ? breakdownFor(preview, dev.feeModel, dev.feePercent)
     : null;
   const summaryRow = "flex items-center gap-3 py-2.5 text-sm";
 
@@ -297,7 +297,7 @@ function WizardForm({
           <StepType form={form} patch={patch} errors={errors} />
         )}
         {step === STEP_DETAILS && (
-          <StepDetails form={form} patch={patch} errors={errors} dev={dev} />
+          <StepDetails form={form} patch={patch} errors={errors} />
         )}
 
         {preview && price && (

@@ -68,6 +68,8 @@ export const settingsPatch = z
   .partial();
 export type SettingsPatch = z.infer<typeof settingsPatch>;
 
+export const UPI_ID_RE = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9]{1,63}$/;
+
 export const activityInput = z
   .object({
     title: z.string().trim().min(3).max(80),
@@ -84,6 +86,9 @@ export const activityInput = z
     startsAt: isoDate,
     endsAt: isoDate,
     priceP: z.number().int().min(0).max(100_000_00),
+    // A VPA like name@bank. Required on a paid plan (the only way to collect
+    // money for now); dropped on a free one.
+    upiId: z.string().trim().regex(UPI_ID_RE, "Enter a UPI id like name@bank").optional(),
     capacity: z.number().int().min(1).max(500),
     visibility: z.enum(["friends", "friends_of_friends", "open"]),
     setting: z.enum(["indoor", "outdoor"]),

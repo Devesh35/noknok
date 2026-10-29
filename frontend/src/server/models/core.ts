@@ -108,6 +108,7 @@ export interface ActivityDoc {
   startsAt: Date;
   endsAt: Date;
   priceP: number;
+  upiId?: string;
   capacity: number;
   visibility: Visibility;
   tags: string[];
@@ -147,6 +148,7 @@ const activitySchema = new Schema<ActivityDoc>(
     startsAt: { type: Date, required: true },
     endsAt: { type: Date, required: true },
     priceP: { type: Number, default: 0 },
+    upiId: String,
     capacity: { type: Number, required: true },
     visibility: { type: String, required: true },
     tags: { type: [String], default: [] },

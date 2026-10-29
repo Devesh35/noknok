@@ -16,9 +16,9 @@ import {
   VISIBILITIES,
   VISIBILITY_META,
 } from "@/lib/activity";
-import { breakdownForPrice } from "@/lib/fees";
+import { directBreakdown } from "@/lib/fees";
 import { formatInr, rupeesToPaise } from "@/lib/format";
-import type { Category, DevSettings, WaitlistMode } from "@/lib/types";
+import type { Category, WaitlistMode } from "@/lib/types";
 import {
   DURATION_OPTIONS,
   TITLE_MAX,
@@ -174,15 +174,11 @@ export function StepDetails({
   form,
   patch,
   errors,
-  dev,
-}: StepProps & { dev: DevSettings }) {
+}: StepProps) {
   const [more, setMore] = useState(false);
-  const rupees = Number(form.price) || 0;
-  const price = breakdownForPrice(
-    rupeesToPaise(rupees),
-    dev.feeModel,
-    dev.feePercent,
-  );
+  const rupees = form.collectPayment ? Number(form.price) || 0 : 0;
+  // Paid plans go straight to the host's UPI id: no platform fee.
+  const price = directBreakdown(rupeesToPaise(rupees));
   const row = "flex items-center justify-between gap-4 py-1.5 text-sm";
 
   return (
@@ -278,55 +274,99 @@ export function StepDetails({
       </section>
 
       <section className="space-y-3">
-        <p className={SECTION_LABEL}>Price &amp; spots</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Input
-            label="What each person pays"
-            prefix="₹"
-            inputMode="numeric"
-            value={form.price}
-            onChange={(event) =>
-              patch({ price: event.target.value.replace(/\D/g, "") })
-            }
-            error={errors.price}
-          />
-          <Input
-            label="Spots"
-            inputMode="numeric"
-            value={form.capacity}
-            onChange={(event) =>
-              patch({ capacity: event.target.value.replace(/\D/g, "") })
-            }
-            error={errors.capacity}
-          />
-        </div>
-        {rupees > 0 ? (
-          <dl className="rounded-2xl border border-line bg-surface/50 px-4 py-2">
-            <div className={`${row} text-body`}>
-              <dt>Each joiner pays</dt>
-              <dd className="font-semibold text-ink">
-                {formatInr(price.totalP)}
-              </dd>
+        <p className={SECTION_LABEL}>Spots &amp; payment</p>
+        <Input
+          label="Spots"
+          inputMode="numeric"
+          value={form.capacity}
+          onChange={(event) =>
+            patch({ capacity: event.target.value.replace(/\D/g, "") })
+          }
+          error={errors.capacity}
+        />
+        <Toggle
+          label="Collect payment"
+          hint={
+            form.collectPayment
+              ? "Joiners pay before their spot is confirmed."
+              : "Free plan: no fees for anyone."
+          }
+          checked={form.collectPayment}
+          onChange={(collectPayment) =>
+            patch({
+              collectPayment,
+              price: collectPayment && form.price === "0" ? "" : form.price,
+            })
+          }
+        />
+        {form.collectPayment && (
+          <div className="animate-rise space-y-3">
+            <Input
+              label="What each person pays"
+              prefix="₹"
+              inputMode="numeric"
+              value={form.price}
+              onChange={(event) =>
+                patch({ price: event.target.value.replace(/\D/g, "") })
+              }
+              error={errors.price}
+            />
+            <div>
+              <p className="mb-2 text-sm font-medium text-ink">How you get paid</p>
+              <div
+                role="radio"
+                aria-checked="true"
+                className="flex min-h-12 items-center gap-2 rounded-2xl border-2 border-brand-600 bg-brand-600/10 px-3 text-sm font-semibold text-ink"
+              >
+                <span aria-hidden="true">📲</span>
+                Pay to your UPI id
+              </div>
+              <p className="mt-2 text-xs text-muted">
+                Each joiner pays you directly from their UPI app. You get the
+                full amount; NokNok takes no cut. You confirm who has paid.
+              </p>
             </div>
-            <div className={`${row} text-soft`}>
-              <dt>Platform fee ({dev.feePercent}%) + GST</dt>
-              <dd>{formatInr(price.platformFeeP + price.gstP)}</dd>
-            </div>
-            <div className={`${row} border-t border-line text-body`}>
-              <dt>You get per ticket</dt>
-              <dd className="font-semibold text-success">
-                {formatInr(price.hostReceivesP)}
-              </dd>
-            </div>
-            <div className={`${row} text-body`}>
-              <dt>If all {form.capacity || 0} spots fill</dt>
-              <dd className="font-semibold text-ink">
-                {formatInr(price.hostReceivesP * (Number(form.capacity) || 0))}
-              </dd>
-            </div>
-          </dl>
-        ) : (
-          <p className="text-xs text-muted">Free plan: no fees for anyone.</p>
+            <Input
+              label="Your UPI id"
+              value={form.upiId}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              onChange={(event) =>
+                patch({ upiId: event.target.value.replace(/\s/g, "") })
+              }
+              placeholder="name@bank"
+              error={errors.upiId}
+            />
+            {rupees > 0 && (
+              <dl className="rounded-2xl border border-line bg-surface/50 px-4 py-2">
+                <div className={`${row} text-body`}>
+                  <dt>Each joiner pays</dt>
+                  <dd className="font-semibold text-ink">
+                    {formatInr(price.totalP)}
+                  </dd>
+                </div>
+                <div className={`${row} text-soft`}>
+                  <dt>Platform fee</dt>
+                  <dd>₹0</dd>
+                </div>
+                <div className={`${row} border-t border-line text-body`}>
+                  <dt>You get per ticket</dt>
+                  <dd className="font-semibold text-success">
+                    {formatInr(price.hostReceivesP)}
+                  </dd>
+                </div>
+                <div className={`${row} text-body`}>
+                  <dt>If all {form.capacity || 0} spots fill</dt>
+                  <dd className="font-semibold text-ink">
+                    {formatInr(
+                      price.hostReceivesP * (Number(form.capacity) || 0),
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            )}
+          </div>
         )}
       </section>
 

@@ -5,7 +5,7 @@ import { Button } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { Sheet } from "@/components/Sheet";
 import { VISIBILITIES, VISIBILITY_META } from "@/lib/activity";
-import type { Category, City, Setting, Visibility } from "@/lib/types";
+import type { Category, Setting, Visibility } from "@/lib/types";
 
 export type DateFilter = ActivityListQuery["date"];
 
@@ -45,11 +45,9 @@ export const NO_FILTERS: Filters = {
 // Filtering is the server's job; this is the query it gets.
 export function toListQuery(
   filters: Filters,
-  city: City,
   query: string,
 ): Partial<ActivityListQuery> {
   return {
-    city,
     category: filters.category === "all" ? undefined : filters.category,
     visibility: filters.visibility === "all" ? undefined : filters.visibility,
     date: filters.date,

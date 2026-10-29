@@ -26,6 +26,7 @@ export async function payAndJoin(
 ): Promise<Join | null> {
   // The fake gateway settles instantly; the short wait is for the UI to show
   // a processing state, as a real gateway would.
+  // In UPI mode the joiner has already paid from their UPI app by now.
   if (session.paymentProvider === "fake" || priceP === 0) {
     await wait(priceP === 0 ? FREE_JOIN_MS : FAKE_PAYMENT_MS);
   }

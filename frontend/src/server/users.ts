@@ -76,6 +76,7 @@ export async function getMe(viewer: UserDoc | null): Promise<SessionDto> {
     dev,
     paymentProvider: config.PAYMENT_PROVIDER,
     paymentEnv: config.PAYMENT_ENV,
+    upi: config.PAYMENT_PROVIDER === "upi" ? { id: config.UPI_ID, name: config.UPI_PAYEE_NAME } : null,
   };
 }
 

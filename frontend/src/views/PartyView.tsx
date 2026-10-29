@@ -148,6 +148,9 @@ function PartyContent({
     refundable,
   } = data;
   const viewer = session.user;
+  // Who a UPI payment goes to: the host's own id on the plan, else the
+  // app-wide one when PAYMENT_PROVIDER=upi.
+  const upiPayee = activity.upiId ? { id: activity.upiId, name: host.name } : session.upi;
   const isHost = viewer?.id === activity.hostId;
   const spotsLeft = Math.max(activity.capacity - activity.goingCount, 0);
   const myJoin = data.viewer.join;
@@ -254,7 +257,7 @@ ${pageUrl}`;
       if (error instanceof PaymentError && error.reason === "dismissed") return;
       if (error instanceof PaymentError) {
         setPayment("failed");
-        setSheet("checkout");
+        setSheet(upiPayee ? "upi" : "checkout");
       } else if (error instanceof ApiError) {
         setSheet(null);
         explainFailure(error.code, error.message);
@@ -267,7 +270,8 @@ ${pageUrl}`;
   const startJoin = () => {
     if (price.totalP > 0) {
       setPayment("idle");
-      setSheet("checkout");
+      // UPI: no gateway, straight to the pay sheet.
+      setSheet(upiPayee ? "upi" : "checkout");
     } else {
       pay();
     }
@@ -457,7 +461,9 @@ ${pageUrl}`;
                 {session.paymentProvider === "fake" &&
                 !IS_PRODUCTION
                   ? "Prototype: no real payment is taken."
-                  : session.paymentEnv === "test"
+                  : upiPayee
+                    ? "Pay by UPI from your own app; the host confirms it."
+                    : session.paymentEnv === "test"
                     ? "Test mode: use a test card or UPI id, no real money moves."
                     : "Payments are processed securely by our payment partner."}
               </p>
@@ -487,6 +493,7 @@ ${pageUrl}`;
           refundable={refundable}
           payment={payment}
           onPay={pay}
+          upi={upiPayee}
           onLeave={leave}
           leaving={busy}
           onSharePlan={sharePlan}
