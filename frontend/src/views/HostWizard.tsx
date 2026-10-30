@@ -28,7 +28,7 @@ import { VISIBILITY_META } from "@/lib/activity";
 import { breakdownFor } from "@/lib/fees";
 import { formatDateTime, formatInr, formatTime } from "@/lib/format";
 import { toast } from "@/lib/toast";
-import type { Activity, Category, DevSettings, User } from "@/lib/types";
+import { DEFAULT_CITY, type Activity, type Category, type DevSettings, type User } from "@/lib/types";
 import {
   blankForm,
   draftKeys,
@@ -150,13 +150,13 @@ function WizardForm({
     () =>
       editing
         ? formFrom(editing)
-        : { ...blankForm(host.city), ...loadDraft(host.id) },
+        : { ...blankForm(host.city ?? DEFAULT_CITY), ...loadDraft(host.id) },
   );
   const [step, setStep] = useState(() =>
     editing
       ? 0
       : loadDraftStep(host.id, {
-          ...blankForm(host.city),
+          ...blankForm(host.city ?? DEFAULT_CITY),
           ...loadDraft(host.id),
         }),
   );
@@ -228,7 +228,7 @@ function WizardForm({
 
   const startOver = () => {
     clearDraft();
-    patch(blankForm(host.city));
+    patch(blankForm(host.city ?? DEFAULT_CITY));
     setCreated(null);
     setPublishError(null);
     goTo(0);

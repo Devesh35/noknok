@@ -40,6 +40,8 @@ export type Setting = "indoor" | "outdoor";
 // each are in AREAS_BY_CITY (src/lib/activity.ts).
 export const CITIES = ["Ulhasnagar", "Ambernath", "Vitthalwadi", "Kalyan"] as const;
 export type City = (typeof CITIES)[number];
+// Where hosting forms start when the user has no city on their profile.
+export const DEFAULT_CITY: City = "Ulhasnagar";
 
 export type WaitlistMode = "auto" | "approval";
 export type FeeModel = "joiner" | "host";
@@ -52,7 +54,7 @@ export interface User {
   handle: string;
   name: string;
   avatarUrl?: string;
-  city: City;
+  city?: City; // not asked at sign-up; set from the profile
   bio: string;
   interests: Category[];
   phoneVerified: boolean;

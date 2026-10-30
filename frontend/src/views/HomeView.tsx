@@ -99,8 +99,8 @@ function HeroArt() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgb(255_255_255/0.08)_0,transparent_35%),radial-gradient(circle_at_70%_10%,rgb(255_255_255/0.06)_0,transparent_30%)]" />
       {/* Crescent: one disc, lit by an inset shadow from its lower-left,
           with a soft glow behind it. */}
-      <span className="absolute top-3 right-4 h-14 w-14 rounded-full bg-violet-200/60 blur-[10px] md:top-5 md:right-[7%] md:h-28 md:w-28 md:bg-violet-200/80 md:shadow-[0_0_50px_14px_rgb(196_181_253/0.3)] md:blur-[14px]" />
-      <span className="absolute top-3 right-4 h-14 w-14 rounded-full shadow-[inset_-15px_-4px_0_0_rgb(243_232_255)] md:top-5 md:right-[7%] md:h-28 md:w-28 md:shadow-[inset_-30px_-8px_0_0_rgb(243_232_255)]" />
+      <span className="absolute top-5 right-3 h-14 w-14 rounded-full bg-violet-200/60 blur-[10px] md:top-5 md:right-[7%] md:h-28 md:w-28 md:bg-violet-200/80 md:shadow-[0_0_50px_14px_rgb(196_181_253/0.3)] md:blur-[14px]" />
+      <span className="absolute top-5 right-3 h-14 w-14 rounded-full shadow-[inset_-15px_-4px_0_0_rgb(243_232_255)] md:top-5 md:right-[7%] md:h-28 md:w-28 md:shadow-[inset_-30px_-8px_0_0_rgb(243_232_255)]" />
       {[
         ["58%", "18%"],
         ["66%", "52%"],
@@ -410,7 +410,8 @@ export function HomeView() {
           {/* Hero */}
           <section className="relative isolate overflow-hidden rounded-[2rem] px-5 py-6 md:px-8 md:py-8">
             <HeroArt />
-            <div className="relative">
+            {/* Right padding keeps the heading clear of the moon on narrow screens */}
+            <div className="relative pr-16 md:pr-0">
               {user && (
                 <p className="text-sm font-medium text-violet-200">
                   {greeting()}, {user.name.split(" ")[0]} 👋

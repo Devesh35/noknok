@@ -42,7 +42,7 @@ export function UserRow({
         <span className="min-w-0">
           <span className="block truncate font-semibold text-ink">{user.name}</span>
           <span className="block truncate text-sm text-muted">
-            {note ?? `@${user.handle} · ${user.city}`}
+            {note ?? `@${user.handle}${user.city ? ` · ${user.city}` : ""}`}
           </span>
         </span>
       </Link>

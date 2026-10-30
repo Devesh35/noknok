@@ -188,7 +188,7 @@ function ProfileForm({ user }: { user: Me }) {
   const [name, setName] = useState(user.name);
   const [handle, setHandle] = useState(user.handle);
   const [bio, setBio] = useState(user.bio);
-  const [city, setCity] = useState<City>(user.city);
+  const [city, setCity] = useState<City | "">(user.city ?? "");
   // The photo saves on its own the moment it's picked or removed, so it isn't
   // part of the form's dirty state; `user.avatarUrl` is always current.
   const avatarUrl = user.avatarUrl;
@@ -218,7 +218,7 @@ function ProfileForm({ user }: { user: Me }) {
     name !== user.name ||
     handle !== user.handle ||
     bio !== user.bio ||
-    city !== user.city ||
+    city !== (user.city ?? "") ||
     interests.join() !== user.interests.join();
 
   const toggleInterest = (category: Category) =>
@@ -232,7 +232,7 @@ function ProfileForm({ user }: { user: Me }) {
     setName(user.name);
     setHandle(user.handle);
     setBio(user.bio);
-    setCity(user.city);
+    setCity(user.city ?? "");
     setInterests(user.interests);
     setSubmitted(false);
   };
@@ -246,7 +246,7 @@ function ProfileForm({ user }: { user: Me }) {
       name: name.trim(),
       ...(handle !== user.handle ? { handle } : {}),
       bio: bio.trim(),
-      city,
+      ...(city ? { city } : {}),
       interests,
     });
     setSaving(false);
@@ -404,6 +404,7 @@ function ProfileForm({ user }: { user: Me }) {
             value={city}
             onChange={setCity}
             options={CITY_OPTIONS}
+            placeholder="Select your city"
           />
         </div>
 

@@ -6,13 +6,10 @@ import { registerUser, sendLoginCode, useSession, verifyLoginCode, type Result }
 import { Logo } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Checkbox, Input } from "@/components/Field";
-import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 import { toast } from "@/lib/toast";
-import { CITIES, type City } from "@/lib/types";
 
 type Step = "phone" | "otp" | "details";
 
-const CITY_OPTIONS: SelectOption<City>[] = CITIES.map((city) => ({ value: city, label: city }));
 // The invisible reCAPTCHA attaches here; it stays mounted across steps.
 const RECAPTCHA_ID = "recaptcha-container";
 
@@ -59,7 +56,7 @@ function inlineMessage(result: Extract<Result<unknown>, { ok: false }>): string 
   }
 }
 
-// Phone → OTP → (new users only) name and city. One flow for login and sign-up.
+// Phone → OTP → (new users only) name. One flow for login and sign-up.
 export function AuthFlow() {
   const router = useRouter();
   const next = safeNext(useSearchParams().get("next"));
@@ -69,7 +66,6 @@ export function AuthFlow() {
   const [otp, setOtp] = useState("");
   const [signupToken, setSignupToken] = useState("");
   const [name, setName] = useState("");
-  const [city, setCityValue] = useState<City | "">("");
   const [terms, setTerms] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [fieldError, setFieldError] = useState("");
@@ -93,7 +89,6 @@ export function AuthFlow() {
   const errors = {
     phone: /^\d{10}$/.test(phone) ? "" : "Enter a 10-digit phone number",
     name: name.trim() ? "" : "Enter your full name",
-    city: city ? "" : "Pick your city",
     terms: terms ? "" : "Confirm you're 18+ and accept the terms",
   };
   const show = (error: string) => (submitted && error ? error : undefined);
@@ -145,7 +140,7 @@ export function AuthFlow() {
 
   const register = async () => {
     setBusy(true);
-    const result = await registerUser({ signupToken, name, city: city as City });
+    const result = await registerUser({ signupToken, name });
     if (!result.ok) {
       setBusy(false);
       // A stale sign-up token means the code step has to be redone.
@@ -172,7 +167,7 @@ export function AuthFlow() {
     } else if (step === "otp") {
       if (otp.length === 6) verify();
       else setFieldError("Enter the 6-digit code from the text.");
-    } else if (!errors.name && !errors.city && !errors.terms) {
+    } else if (!errors.name && !errors.terms) {
       register();
     }
   };
@@ -236,15 +231,6 @@ export function AuthFlow() {
               value={name}
               onChange={(event) => setName(event.target.value)}
               error={show(errors.name) ?? (fieldError || undefined)}
-            />
-            <SelectMenu
-              variant="field"
-              label="City"
-              placeholder="Select your city"
-              value={city}
-              onChange={setCityValue}
-              options={CITY_OPTIONS}
-              error={show(errors.city)}
             />
             <Checkbox
               label="I'm 18+ and accept the terms"

@@ -30,7 +30,6 @@ export const firebaseExchangeInput = z.object({
 export const registerInput = z.object({
   signupToken: z.string().min(1).max(1024),
   name: z.string().trim().min(1).max(60),
-  city,
 });
 export type RegisterInput = z.infer<typeof registerInput>;
 

@@ -14,7 +14,7 @@ import { areasFor, CATEGORIES, CATEGORY_META, SUBCATEGORIES } from "@/lib/activi
 import { formatDateTime } from "@/lib/format";
 import { DAY_MS, now } from "@/lib/time";
 import { toast } from "@/lib/toast";
-import { CITIES, type Category, type City } from "@/lib/types";
+import { CITIES, DEFAULT_CITY, type Category, type City } from "@/lib/types";
 
 const CITY_OPTIONS: SelectOption<City>[] = CITIES.map((city) => ({ value: city, label: city }));
 function areaOptions(city: City): SelectOption<string>[] {
@@ -335,5 +335,5 @@ export function QuickHost() {
       />
     );
   }
-  return <QuickForm defaultCity={host.city} />;
+  return <QuickForm defaultCity={host.city ?? DEFAULT_CITY} />;
 }

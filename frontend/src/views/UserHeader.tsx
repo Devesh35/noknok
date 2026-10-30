@@ -112,7 +112,7 @@ export function UserHeader({
   const primary = isOwn ? (
     <Link href="/settings" className={buttonClass("primary", "flex-1 md:flex-none md:px-5")}>
       <PencilIcon className="h-4 w-4" />
-      Edit profile &amp; settings
+      Edit
     </Link>
   ) : (
     !relationship.blocked && (
@@ -163,7 +163,7 @@ export function UserHeader({
             <Avatar
               user={profile}
               size="xl"
-              className="animate-pop h-28 w-28 text-4xl shadow-xl ring-4 ring-canvas-2 md:h-32 md:w-32 md:text-5xl"
+              className="animate-pop h-[clamp(6rem,24vw,8rem)] w-[clamp(6rem,24vw,8rem)] text-[clamp(1.75rem,7vw,3rem)] shadow-xl ring-4 ring-canvas-2"
             />
             {isOwn && (
               <span
@@ -175,12 +175,13 @@ export function UserHeader({
             )}
           </div>
           <div className="mt-3 min-w-0 flex-1 md:mt-0 md:pb-2">
-            <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-3xl font-extrabold tracking-tight text-ink md:text-4xl">
+            <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[clamp(1.5rem,6vw,2.25rem)] font-extrabold tracking-tight text-ink">
               <span className="truncate">{profile.name}</span>
               <VerifiedBadges user={profile} />
             </h1>
-            <p className="mt-0.5 truncate text-base text-muted">
-              @{profile.handle} · {profile.city}
+            <p className="mt-0.5 truncate text-[clamp(0.875rem,3.5vw,1rem)] text-muted">
+              @{profile.handle}
+              {profile.city ? ` · ${profile.city}` : ""}
             </p>
           </div>
           <div className="hidden shrink-0 items-center gap-2 md:flex md:pb-2">
@@ -198,7 +199,7 @@ export function UserHeader({
           </div>
         </div>
 
-        <p className="mt-3 max-w-2xl text-lg text-body">
+        <p className="mt-3 max-w-2xl text-[clamp(1rem,4vw,1.125rem)] text-body">
           {profile.bio || (isOwn ? "New on NokNok 👋" : `${profile.name.split(" ")[0]} is new on NokNok 👋`)}
         </p>
         {mutual.length > 0 && (
@@ -214,13 +215,13 @@ export function UserHeader({
               key={stat.label}
               className="flex flex-col items-center gap-1 px-1 text-center md:grid md:grid-cols-[auto_auto] md:grid-rows-[auto_auto] md:justify-center md:gap-x-4 md:gap-y-0 md:text-left"
             >
-              <dd className="order-1 text-2xl font-extrabold text-ink md:order-none md:col-start-2">
+              <dd className="order-1 text-[clamp(1rem,4vw,1.25rem)] font-semibold text-ink md:order-none md:col-start-2">
                 {stat.value}
               </dd>
               <span className="order-2 md:order-none md:col-start-1 md:row-span-2 md:row-start-1 md:self-center" aria-hidden="true">
                 {stat.icon}
               </span>
-              <dt className="order-3 text-xs text-muted md:order-none md:col-start-2 md:text-sm">
+              <dt className="order-3 text-[clamp(0.65rem,2.8vw,0.875rem)] text-muted md:order-none md:col-start-2">
                 {stat.label}
               </dt>
             </div>

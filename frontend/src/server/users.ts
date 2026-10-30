@@ -154,7 +154,6 @@ export async function register(input: RegisterInput, ip: string): Promise<Me> {
     _id: newId("u"),
     handle,
     name: input.name,
-    city: input.city,
     bio: "New on NokNok 👋",
     phone,
     phoneAuthUid,

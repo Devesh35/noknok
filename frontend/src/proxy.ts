@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // UX only: sends visitors without a session cookie to the login page before a
 // private page renders. The real check is requireUser() in src/server/auth.ts.
-const PRIVATE = ["/u/me", "/host", "/settings", "/notifications"];
+const PRIVATE = ["/u/me", "/host", "/settings", "/notifications", "/friends"];
 const COOKIE = process.env.SESSION_COOKIE || "nn_session";
 
 export function proxy(request: NextRequest) {
@@ -18,5 +18,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/u/me", "/host/:path*", "/settings", "/notifications"],
+  matcher: ["/u/me", "/host/:path*", "/settings", "/notifications", "/friends"],
 };

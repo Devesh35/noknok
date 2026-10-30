@@ -15,6 +15,7 @@ import {
   SearchIcon,
   SettingsIcon,
   UserIcon,
+  UsersIcon,
 } from "@/components/icons";
 
 export const FOCUS_SEARCH_EVENT = "noknok:focus-search";
@@ -153,6 +154,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const onHome = pathname === "/";
   const onHost = pathname.startsWith("/host");
   const onAlerts = pathname === "/notifications";
+  const onFriends = pathname === "/friends";
   const onProfile =
     pathname === "/u/me" || (user !== null && pathname === `/u/${user.handle}`);
   const onSettings = pathname === "/settings";
@@ -190,6 +192,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               <HomeIcon className={sideIconClass(onHome)} />
               Home
             </Link>
+            {user && (
+              <Link href="/friends" className={sideLinkClass(onFriends)}>
+                <UsersIcon className={sideIconClass(onFriends)} />
+                Friends
+              </Link>
+            )}
             <Link href="/host" className={sideLinkClass(onHost)}>
               <PlusIcon className={sideIconClass(onHost)} />
               Host
@@ -262,6 +270,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               N
             </span>
             Home
+          </Link>
+          <Link href={user ? "/friends" : "/login?next=/friends"} className={tabClass(onFriends)}>
+            <UsersIcon className="h-6 w-6" />
+            Friends
           </Link>
           <Link href="/host" className={tabClass(onHost)}>
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/40">

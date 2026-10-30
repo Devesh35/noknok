@@ -18,7 +18,7 @@ export interface UserDoc {
   handle: string;
   name: string;
   avatarUrl?: string;
-  city: City;
+  city?: City;
   bio: string;
   phone: string;
   // Firebase Auth uid of the phone login; used to delete it with the account.
@@ -40,7 +40,7 @@ const userSchema = new Schema<UserDoc>(
     handle: { type: String, required: true },
     name: { type: String, required: true },
     avatarUrl: String,
-    city: { type: String, required: true },
+    city: String,
     bio: { type: String, default: "" },
     phone: { type: String, required: true },
     phoneAuthUid: String,

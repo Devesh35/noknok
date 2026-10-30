@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useRef, useState } from "react";
 import {
   acceptFriendRequest,
   removeFriendship,
@@ -18,7 +18,7 @@ import { UserRow } from "@/components/UserBits";
 import { toast } from "@/lib/toast";
 import type { FriendRequest, ProfileDto, User } from "@/lib/types";
 
-type FriendsTab = "friends" | "requests" | "find";
+type FriendsTab = "friends" | "requests";
 
 export const LIST_GRID = "stagger-fade grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3";
 
@@ -152,9 +152,6 @@ function PeopleSearch({
   autoAccept: boolean;
 }) {
   const { data, error, isPending, refetch } = usePeople(query);
-  if (query.trim() === "") {
-    return <EmptyState emoji="🔍" title="Search for someone by name or @handle" />;
-  }
   if (isPending) {
     return (
       <div className={LIST_GRID}>
@@ -211,6 +208,7 @@ export function FriendsPanel({
 }) {
   const [tab, setTab] = useState<FriendsTab>("friends");
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   // Typing stays instant; the search request follows a beat behind.
   const deferredQuery = useDeferredValue(query);
   const { user, isOwn, friends, mutual, incomingRequests, outgoingRequests } = profile;
@@ -222,7 +220,7 @@ export function FriendsPanel({
         emoji="🤝"
         title={isOwn ? "No friends yet" : `${user.name.split(" ")[0]} has no friends here yet`}
         body={isOwn ? "Find people you know to see their friends-only plans." : undefined}
-        action={isOwn && <Button onClick={() => setTab("find")}>Find people</Button>}
+        action={isOwn && <Button onClick={() => searchRef.current?.focus()}>Find people</Button>}
       />
     ) : (
       <div className={LIST_GRID}>
@@ -253,23 +251,38 @@ export function FriendsPanel({
     ...outgoingRequests.map((r) => ({ ...r, sentByMe: true })),
   ];
 
+  // The search bar is always there; typing swaps the lists for results.
+  const searching = query.trim() !== "";
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <Chip selected={tab === "friends"} onClick={() => setTab("friends")}>
-          Friends ({friends.length})
-        </Chip>
-        <Chip selected={tab === "requests"} onClick={() => setTab("requests")}>
-          Requests ({incomingRequests.length})
-        </Chip>
-        <Chip selected={tab === "find"} onClick={() => setTab("find")}>
-          Find people
-        </Chip>
-      </div>
+      <input
+        ref={searchRef}
+        type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Find people by name or @handle"
+        aria-label="Search people"
+        className="min-h-11 w-full rounded-full border border-line bg-surface/60 px-4 text-base shadow-sm outline-none transition duration-200 placeholder:text-faint focus:border-brand-600 focus:bg-surface-hi focus:ring-4 focus:ring-brand-600/15"
+      />
 
-      {tab === "friends" && friendList}
+      {searching ? (
+        <PeopleSearch query={deferredQuery} viewer={viewer} autoAccept={autoAccept} />
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <Chip selected={tab === "friends"} onClick={() => setTab("friends")}>
+            Friends ({friends.length})
+          </Chip>
+          <Chip selected={tab === "requests"} onClick={() => setTab("requests")}>
+            Requests ({incomingRequests.length})
+          </Chip>
+        </div>
+      )}
 
-      {tab === "requests" &&
+      {!searching && tab === "friends" && friendList}
+
+      {!searching &&
+        tab === "requests" &&
         (requests.length === 0 ? (
           <EmptyState emoji="📭" title="No pending requests" />
         ) : (
@@ -294,26 +307,6 @@ export function FriendsPanel({
           </div>
         ))}
 
-      {tab === "find" && (
-        <div className="space-y-3">
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by name or @handle"
-            aria-label="Search people"
-            className="min-h-11 w-full rounded-full border border-line bg-surface/60 px-4 text-base shadow-sm outline-none transition duration-200 placeholder:text-faint focus:border-brand-600 focus:bg-surface-hi focus:ring-4 focus:ring-brand-600/15"
-          />
-          <Button
-            variant="secondary"
-            className="w-full"
-            onClick={() => toast("Contact import arrives with the mobile app")}
-          >
-            📇 Find friends from my contacts
-          </Button>
-          <PeopleSearch query={deferredQuery} viewer={viewer} autoAccept={autoAccept} />
-        </div>
-      )}
     </div>
   );
 }
